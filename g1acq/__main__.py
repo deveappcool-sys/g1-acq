@@ -17,7 +17,7 @@ import shutil
 import sys
 from pathlib import Path
 
-from . import config, launch
+from . import config, doctor, launch, network
 from .report import build_report
 from .store import FileStore
 
@@ -121,6 +121,17 @@ def _parser() -> argparse.ArgumentParser:
     _state_parser(clear, with_target=False)
     clear.set_defaults(handler=_clear)
 
+    doctor_cmd = sub.add_parser("doctor", help="print a copy-pasteable self-check report")
+    doctor_cmd.add_argument("--sidecar-port", type=int, default=launch.DEFAULT_PORT)
+    doctor_cmd.add_argument("--console-port", type=int, default=launch.DEFAULT_CONSOLE_PORT)
+    doctor_cmd.add_argument("--confdir", default="~/.mitmproxy")
+    _state_parser(doctor_cmd, with_target=False)
+    doctor_cmd.set_defaults(handler=_doctor)
+
+    url = sub.add_parser("url", help="print the setup console address and a QR code")
+    url.add_argument("--console-port", type=int, default=launch.DEFAULT_CONSOLE_PORT)
+    url.set_defaults(handler=_url)
+
     ca = sub.add_parser(
         "ca",
         help="export the mitmproxy root CA in DER form (what iOS/Android installs)",
@@ -165,6 +176,33 @@ def _clear(args: argparse.Namespace) -> int:
         return 0
     response = build_report(store, config.REPORT_ROOT + "?clear=1")
     print(response.body.split("<p>")[1].split("</p>")[0] if "<p>" in response.body else "cleared")
+    return 0
+
+
+def _doctor(args: argparse.Namespace) -> int:
+    checks = doctor.collect(
+        state_path=args.state,
+        sidecar_port=args.sidecar_port,
+        console_port=args.console_port,
+        confdir=args.confdir,
+    )
+    print(doctor.render(checks, state_path=args.state))
+    return 0 if not any(c.status == doctor.BAD for c in checks) else 1
+
+
+def _url(args: argparse.Namespace) -> int:
+    address = network.primary_address()
+    if not address:
+        print("没检测到局域网地址：这台机器现在没有连上任何网络？", file=sys.stderr)
+        return 2
+    url = f"http://{address}:{args.console_port}/"
+    print(url)
+    try:
+        import segno
+
+        segno.make(url, error="m").terminal(compact=True)
+    except Exception:  # QR is a convenience, never a requirement
+        pass
     return 0
 
 
