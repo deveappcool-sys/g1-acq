@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # G1 ACQ · one-command install.
 #
-#   curl -fsSL https://raw.githubusercontent.com/crhywun/g1-acq/main/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/xulu1998/g1-acq/main/install.sh | bash
 #
 # or, from a checkout:
 #
@@ -21,7 +21,7 @@
 #   G1_AUTH       user:password, only needed if the sidecar is exposed
 set -euo pipefail
 
-G1_REPO="${G1_REPO:-https://github.com/crhywun/g1-acq.git}"
+G1_REPO="${G1_REPO:-https://github.com/xulu1998/g1-acq.git}"
 G1_HOME="${G1_HOME:-$HOME/.g1-acq/src}"
 LABEL="com.g1acq.sidecar"
 

@@ -2,7 +2,21 @@
 
 Google One（iOS）订阅入口的**商品 ID 改写与被动采集**工具，用于 **Clash - Rule Based Proxy**（mihomo 内核）及其它 mihomo 客户端。
 
+> 同样的效果，原本要装 Shadowrocket 才能做到。这个项目把它搬到了 Clash 上：Clash 只负责分流，改写交给一台你自己机器上的旁路服务。
+
 > ⚠️ **仅供研究与兼容性测试。** 本项目通过改写客户端收到的商品编号来观察商店行为，这可能违反 Google / Apple 的服务条款；请勿用于获取未付费的权益，测试过程中不要真正完成购买。作者不对使用后果负责，也不保证任何商品、价格或权益可用。
+
+---
+
+## 来源与致谢
+
+本项目是 [crhywun/g1-acq](https://github.com/crhywun/g1-acq) 的 **Clash 移植版**。
+原项目是 Shadowrocket 模块，而 Clash 的内核做不了 MITM——所以这里把「改写引擎」搬到
+一台你自己机器上的旁路服务里，让没有买 Shadowrocket 的人也能用同样的方法。
+
+三档映射表、SKU 采集规则、报告字段和 `g1.sku.scan.v1` / `g1.pro.annual.test.v1`
+两个存储键都沿用原项目，方便对照它的文档和结论。原项目未声明许可证，如果你认识作者，
+欢迎帮忙转告一声。
 
 ---
 
@@ -28,7 +42,7 @@ Clash / mihomo 是**规则分流器**：它决定一条连接走哪个出口，�
 ### ① 装（一行）
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/crhywun/g1-acq/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/xulu1998/g1-acq/main/install.sh | bash
 ```
 
 它会自动找 Python 3.12+、建虚拟环境、注册开机自启，最后**打印一个二维码**。
@@ -36,7 +50,7 @@ curl -fsSL https://raw.githubusercontent.com/crhywun/g1-acq/main/install.sh | ba
 想在仓库里跑也行：
 
 ```bash
-git clone https://github.com/crhywun/g1-acq.git && cd g1-acq && ./install.sh
+git clone https://github.com/xulu1998/g1-acq.git && cd g1-acq && ./install.sh
 ```
 
 ### ② 配（手机扫那个码）
