@@ -161,6 +161,7 @@ uv pip install --python .venv/bin/python pytest pyyaml
 | 文件 | 用途 |
 |---|---|
 | [`install.sh`](install.sh) | 一键安装（Python、依赖、后台服务、自检、二维码） |
+| [`run.sh`](run.sh) | 不想注册服务时，前台直接启动（`./run.sh`） |
 | [`g1_addon.py`](g1_addon.py) | mitmproxy 插件入口：响应改写、报告页、控制台 |
 | [`g1acq/config.py`](g1acq/config.py) | 三档映射、版本、存储键、上限——**唯一事实来源** |
 | [`g1acq/profile.py`](g1acq/profile.py) + [`profile.template.yaml`](g1acq/profile.template.yaml) | 生成 Clash 配置 |
