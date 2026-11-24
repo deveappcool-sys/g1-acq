@@ -2,6 +2,8 @@
 
 本文是 [README](../README.md) 第 3 节的展开版，覆盖旁路主机选址、证书、分流规则、验证与排错。
 
+> ⚠️ **仅供研究与兼容性测试。** 改写商品编号来观察商店行为可能违反 Google / Apple 的服务条款；请勿用于获取未付费权益，测试时不要真正完成购买。
+
 ---
 
 ## 1. 结构回顾
@@ -29,7 +31,7 @@ Clash / mihomo **不含 MITM 与响应改写**，所以功能被拆成两半：
 |---|---|---|
 | **同一 Wi-Fi 的 Mac** | 临时调试、单人使用 | Clash 里填 Mac 的局域网 IP；macOS 防火墙需放行端口；离开 Wi-Fi 就失效 |
 | **VPS** | 日常使用 | 需能从 VPS 访问 Google，否则加 `--upstream`；对外开放端口要做好访问控制 |
-| **NAS / 树莓派 / 容器** | 家里常开 | 同上，注意别把 8080 暴露到公网 |
+| **NAS / 树莓派 / Docker** | 家里常开 | 同上，注意别把 8080 暴露到公网；`docker compose down -v` 会删掉存放 CA 的卷 |
 
 端口默认 `8080`，可用 `G1_PORT` 改：
 
@@ -47,13 +49,31 @@ G1_PORT=9090 ./run.sh
 G1_UPSTREAM=http://127.0.0.1:7890 ./run.sh
 ```
 
-`--upstream` 支持 `http://`、`https://`、`socks5://` 等 mitmproxy 认可的写法。Docker 里访问宿主机代理用 `http://host.docker.internal:7890`。
+`--upstream` 支持 `http://`、`https://`、`socks5://` 等 mitmproxy 认可的写法。Docker 里访问宿主机代理用 `http://host.docker.internal:7890`（Linux 还需要在 compose 里加 `extra_hosts: ["host.docker.internal:host-gateway"]`）。
+
+> **不要把上游设成一个会把 `one.google.com` 送回旁路的配置。** 如果你在本机同时跑 Clash 且它已导入本项目的规则，`G1_UPSTREAM=http://127.0.0.1:7890` 会形成 `旁路 → Clash → 旁路` 的环路，请求会一直超时。给上游那份配置单独加一条 `DOMAIN,one.google.com,DIRECT`，或者干脆用一个不含 G1 规则的配置/端口。
 
 ### 2.2 安全提示
 
-- 旁路是一个**明文 HTTP 代理**，只承载 `CONNECT one.google.com:443` 这一行，隧道里仍然是 TLS，没有明文业务数据。
-- 但 CA 私钥就等于可以伪造任意站点证书，**不要**把 `~/.mitmproxy/mitmproxy-ca.pem` 泄露出去。
-- 公网部署时建议在防火墙或反向代理后面加 IP 白名单，至少不要长期开放给所有人。
+旁路默认是一个**无认证的 HTTP 代理**，监听所有网卡。需要说清楚几点：
+
+- `allow_hosts` 只限制**哪些域名会被解密**，不限制**能代理到哪里**。任何人都可以用它转发任意 HTTP/CONNECT 请求，包括访问旁路主机 `127.0.0.1` 和内网里的服务。
+- 报告页没有权限校验：能连上端口就能读，也能用 `/g1-sku-report?clear=1` 清空记录。
+- 隧道里的业务数据仍然是端到端 TLS（客户端与旁路之间、旁路与 Google 之间各一段），明文只有 `CONNECT 域名:端口` 这一行。
+- CA 私钥（`~/.mitmproxy/mitmproxy-ca.pem`）等同于可以伪造任意站点证书，**不要**泄露、不要提交进仓库。
+
+因此：
+
+```bash
+G1_AUTH=g1:change-me ./run.sh    # 或 python -m g1acq serve --auth g1:change-me
+```
+
+开启后 Clash 的 `G1-MITM` 里要填同样的 `username` / `password`，否则代理返回 407。无法认证时，用防火墙把来源限制到手机所在网段，不要暴露到公网。
+
+### 2.3 端口与其他冲突
+
+- 默认 `8080` 可能与别的服务冲突，用 `G1_PORT` 改。
+- `clash/g1-acq.yaml` 里的 `mixed-port: 7890` 是 Clash 自己的入口端口，与本机已有客户端冲突时同样要改。
 
 ---
 
@@ -86,12 +106,24 @@ SHA-256 4F:FD:...
 
 把 `.der` 传到手机（AirDrop / 邮件 / 文件 App / 局域网 HTTP 都可以）。
 
+> Docker 部署时 `HOME` 指向 `/data`，CA 在容器的 `/data/.mitmproxy/`：
+>
+> ```bash
+> docker compose exec g1-acq python -m g1acq ca --confdir /data/.mitmproxy --out /data/g1-acq-ca.der
+> docker compose cp g1-acq:/data/g1-acq-ca.der ./g1-acq-ca.der
+> ```
+
 ### 3.3 在 iOS 上安装
 
-1. **设置 → 通用 → VPN 与设备管理 → 已下载的描述文件** → 选择证书 → **安装**。
-2. **设置 → 通用 → 关于本机 → 证书信任设置** → 打开该根证书的 **完全信任**。
+1. 在手机上**点开 `.der` 文件**（AirDrop 会直接弹出，文件 App / 邮件里点一下即可），系统提示「已下载描述文件」。
+2. **设置 → 通用 → VPN 与设备管理 → 已下载的描述文件** → 选择该证书 → **安装** → 输入锁屏密码 → 再次确认安装。
+3. **设置 → 通用 → 关于本机 → 证书信任设置** → 打开该根证书的 **完全信任**。
 
-第 2 步不做，浏览器和 App 仍会判定证书不可信。
+第 3 步不做，浏览器和 App 仍会判定证书不可信；这一步是最常被漏掉的。
+
+已知问题：个别 iOS 18 小版本装完证书后「证书信任设置」里不出现该条目，升级系统或删除后重装可解。
+
+**可能失败的情况**：如果 Google App 对 `one.google.com` 做了证书固定（pinning），拦截会直接失败，此时页面报网络错误而不是显示方案。本项目只验证过 `mitmdump` 能拦截真实 `one.google.com`（见 [README 第 9 节](../README.md#9-验证范围)），**没有**在真实 Google App 里验证过这一点。
 
 ### 3.4 用 mitm.it 快速下载（可选）
 
@@ -119,16 +151,20 @@ mitm.it 是明文 HTTP，旁路的 `allow_hosts` 只限制 TLS 拦截，不影�
 
 ```yaml
 proxies:
-  - name: "G1-MITM"
+  - name: "G1-MITM"        # 名称不要改：规则和策略组都按这个名字引用
     type: http
     server: 192.168.1.10   # 旁路主机地址
     port: 8080             # 旁路监听端口
     tls: false             # 保持 false
+    # username: "g1"       # 开启 G1_AUTH 后填同样的凭据
+    # password: "change-me"
 
-  - name: "YOUR-NODE"      # 换成你自己的节点
+  - name: "YOUR-NODE"      # 换节点时改 server/port/password，别改 name
     type: trojan
     server: ...
 ```
+
+> 改名就会出事：`PROXY` 组里写的是 `YOUR-NODE`，`G1` 组里写的是 `G1-MITM`。改了代理的 `name` 却忘了同步策略组，`mihomo` 会报 `proxy [...]: '...' not found` 并拒绝启动。本项目有一个测试专门盯这件事。
 
 导入方式取决于客户端版本，一般是「配置 → 添加 → 从文件 / 从 URL 导入」。
 
@@ -164,7 +200,7 @@ rules:
 |---|---|
 | `AND,((NETWORK,udp),(DST-PORT,443),(DOMAIN,one.google.com)),REJECT-DROP` | 丢弃该域名的 QUIC，让客户端回退到 TCP，旁路才看得到响应。`REJECT-DROP` 是 mihomo 里对应 Shadowrocket `REJECT-NO-DROP` 的策略：静默丢包，客户端会快速回退而不是直接报错 |
 | `DOMAIN,one.google.com,G1` | 把目标域名交给旁路 |
-| `DOMAIN-SUFFIX,one.google.com,G1` | 兜底，覆盖未走 SNI 的连接；不匹配时无副作用 |
+| `DOMAIN-SUFFIX,one.google.com,G1` | 覆盖 `one.google.com` 的子域名；它**不能**救回没带域名、只连 IP 的连接，那种情况靠 `sniffer` 与 fake-ip |
 
 > Shadowrocket 版丢弃的是**全局** UDP 443，会影响其它 App 的 HTTP/3。本版把它限定在 `one.google.com`，是刻意的改进。想恢复全局行为，把第三条条件去掉即可。
 
@@ -176,6 +212,8 @@ rules:
 - **sniffer** 在 App 直接连 IP 时把域名找回来。
 
 不要给 `one.google.com` 加 `fake-ip-filter`，那会让域名规则退化成 IP 规则。
+
+配置里的 `nameserver` 用的是阿里 / 腾讯 DoH，中国大陆可用性最好；换到其它网络环境时请改成你信任的解析器。`sniffer` 同时开启了 `QUIC` 嗅探：没有它，某些直接连 IP 的 QUIC 流会被 `AND` 规则漏掉。
 
 ### 4.5 代理组 `G1`
 
@@ -244,6 +282,11 @@ curl -sS -k --proxy http://127.0.0.1:8080 https://one.google.com/g1-sku-report |
 
 # 换一个 2TB 候选（不改代码）
 G1_TARGET=g1.2tb.ai.other_ip_90p ./run.sh
+
+# 要求代理认证
+G1_AUTH=g1:change-me ./run.sh
 ```
+
+`report` / `clear` 在还没有任何记录时会提示「没有状态文件」并输出空报告，不会报错退出。注意 `report --target` 默认是内置候选：如果你用 `G1_TARGET` 跑过别的目标，命令行报告要带上同样的 `--target` 才能和网页报告一致。
 
 `--target` / `G1_TARGET` 只影响 2TB 档的目标，20TB / 30TB 映射保持不变。报告里的 `configuredTarget` 会反映当前配置。

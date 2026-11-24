@@ -77,7 +77,7 @@ class Settings:
     max_body_bytes: int = 0  # 0 means "no limit", matching max-size=0
 
     def __post_init__(self) -> None:
-        if not TARGET_RE.match(self.target):
+        if not TARGET_RE.fullmatch(self.target):
             raise ValueError(f"invalid g1 target SKU: {self.target!r}")
         if self.max_body_bytes < 0:
             raise ValueError("max_body_bytes must be >= 0")

@@ -7,7 +7,7 @@
 # three-tier SKU rewrite.  Every other connection keeps using your own nodes.
 #
 # Read docs/clash-setup.md before importing.  The only mandatory edit is the
-# `G1-MITM` server address below.
+# `G1-MITM` server address below and your own node.
 # =============================================================================
 
 mixed-port: 7890
@@ -32,7 +32,6 @@ dns:
   fake-ip-filter:
     - "*.lan"
     - "*.local"
-    - "localhost.ptlogin2.qq.com"
   default-nameserver:
     - 223.5.5.5
     - 119.29.29.29
@@ -50,6 +49,10 @@ sniffer:
       ports: [443, 8443]
     HTTP:
       ports: [80, 8080-8880]
+    # Without QUIC sniffing, a flow that reached us as a bare IP cannot be
+    # matched by the `AND` rule below and would slip past on HTTP/3.
+    QUIC:
+      ports: [443, 8443]
   # Sniffing recovers the hostname when an app connects straight to an IP.
   force-domain:
     - "one.google.com"
@@ -59,21 +62,25 @@ proxies:
   # MANDATORY EDIT: where the G1 ACQ sidecar listens.
   #   * same Wi-Fi as the phone  -> the Mac/Linux box LAN address
   #   * VPS                      -> the public address
+  # Keep the name `G1-MITM` exactly as written, or update the `G1` group below
+  # to the new name.
   # Leave `tls` off: the proxy hop only carries the CONNECT line, the payload
   # is already end-to-end TLS between the phone and the sidecar.
+  # If you started the sidecar with G1_AUTH / --auth, fill in username and
+  # password here with the same values.
   # ---------------------------------------------------------------------------
   - name: "G1-MITM"
     type: http
     server: 192.168.1.10
     port: 8080
     tls: false
-    udp: false
     # username: "g1"
     # password: "change-me"
 
   # ---------------------------------------------------------------------------
-  # Replace this placeholder with your own node(s), or delete it and use the
-  # proxy-provider variant documented in docs/clash-setup.md.
+  # Placeholder node.  Edit server/port/password in place rather than renaming
+  # it, or rename it here AND in the `PROXY` group below; a group pointing at a
+  # missing proxy makes mihomo refuse to start.
   # ---------------------------------------------------------------------------
   - name: "YOUR-NODE"
     type: trojan
@@ -108,11 +115,17 @@ rules:
   #    one.google.com keeps other apps' HTTP/3 working.
   - AND,((NETWORK,udp),(DST-PORT,443),(DOMAIN,one.google.com)),REJECT-DROP
 
-  # 2) Everything from one.google.com goes through the sidecar.
+  # 2) Everything from one.google.com goes through the sidecar.  The suffix
+  #    rule also covers any one.google.com subdomain.
   - DOMAIN,one.google.com,G1
-
-  # 3) One more safety net for clients that ignore SNI/host on the first
-  #    connection; harmless when it does not match.
   - DOMAIN-SUFFIX,one.google.com,G1
+
+  # 3) Keep LAN traffic local.  Without these, anything on your home network
+  #    would be pushed through the proxy node and simply fail.
+  - IP-CIDR,192.168.0.0/16,DIRECT,no-resolve
+  - IP-CIDR,10.0.0.0/8,DIRECT,no-resolve
+  - IP-CIDR,172.16.0.0/12,DIRECT,no-resolve
+  - IP-CIDR,127.0.0.0/8,DIRECT,no-resolve
+  - IP-CIDR6,fc00::/7,DIRECT,no-resolve
 
   - MATCH,PROXY

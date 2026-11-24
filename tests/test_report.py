@@ -299,3 +299,18 @@ def test_clear_message_is_rendered():
     h = Harness()
     html = _html(h, REPORT + "?clear=1")
     assert "本工具的两份本地记录已清空。" in html
+
+
+def test_unreadable_state_file_is_reported_as_unavailable(tmp_path):
+    from g1acq.store import FileStore
+
+    # A directory in the place of the state file cannot be read as JSON.
+    broken = tmp_path / "state.json"
+    broken.mkdir()
+    store = FileStore(broken)
+    from g1acq.report import build_report
+
+    response = build_report(store, REPORT + "?format=json")
+    data = json.loads(response.body)
+    assert data["storageAvailable"] is False
+    assert data["scan"]["skus"] == []

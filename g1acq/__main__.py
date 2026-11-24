@@ -23,12 +23,28 @@ from .store import FileStore
 
 
 def _serve(args: argparse.Namespace) -> int:
+    try:
+        auth = launch.validate_auth(args.auth)
+        # Fail here with a readable message instead of inside mitmdump.
+        config.Settings(target=args.target)
+    except ValueError as error:
+        print(f"[g1-acq] {error}", file=sys.stderr)
+        return 2
+    if not auth:
+        print(
+            "[g1-acq] warning: no --auth set; anyone who can reach this port can "
+            "use it as a proxy and read or clear the report.\n"
+            "[g1-acq]          add --auth user:password (and matching credentials "
+            "to the Clash G1-MITM proxy) unless it listens on loopback only.",
+            file=sys.stderr,
+        )
     options = launch.LaunchOptions(
         port=args.port,
         state=args.state,
         target=args.target,
         upstream=args.upstream,
         bind=args.bind,
+        auth=auth,
     )
     mitmdump = shutil.which("mitmdump")
     if mitmdump is None:
@@ -76,6 +92,12 @@ def _parser() -> argparse.ArgumentParser:
     serve.add_argument("--port", type=int, default=launch.DEFAULT_PORT)
     serve.add_argument("--bind", default="", help="listen address (default: all)")
     serve.add_argument(
+        "--auth",
+        default="",
+        help="require proxy authentication (user:password); strongly recommended "
+        "when the sidecar is reachable from other devices",
+    )
+    serve.add_argument(
         "--upstream",
         default="",
         help="chain through an existing proxy, e.g. http://127.0.0.1:7890",
@@ -110,19 +132,15 @@ def _parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _load(args: argparse.Namespace) -> tuple[FileStore, str] | None:
+def _load(args: argparse.Namespace) -> tuple[FileStore, str]:
     path = os.path.abspath(os.path.expanduser(args.state))
     if not os.path.exists(path):
-        print(f"state file not found: {path}", file=sys.stderr)
-        return None
+        print(f"[g1-acq] no state file yet at {path}", file=sys.stderr)
     return FileStore(path), path
 
 
 def _report(args: argparse.Namespace) -> int:
-    loaded = _load(args)
-    if loaded is None:
-        return 2
-    store, _ = loaded
+    store, _ = _load(args)
     url = config.REPORT_ROOT + ("" if args.html else "?format=json")
     try:
         response = build_report(store, url, settings=config.Settings(target=args.target))
@@ -134,10 +152,10 @@ def _report(args: argparse.Namespace) -> int:
 
 
 def _clear(args: argparse.Namespace) -> int:
-    loaded = _load(args)
-    if loaded is None:
-        return 2
-    store, _ = loaded
+    store, path = _load(args)
+    if not os.path.exists(path):
+        print("没有可清理的记录。")
+        return 0
     response = build_report(store, config.REPORT_ROOT + "?clear=1")
     print(response.body.split("<p>")[1].split("</p>")[0] if "<p>" in response.body else "cleared")
     return 0

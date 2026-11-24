@@ -26,6 +26,9 @@ class LaunchOptions:
     target: str = ""
     upstream: str = ""
     bind: str = ""
+    # "user:password" -> mitmproxy's proxyauth.  Without it the sidecar is an
+    # open proxy for anyone who can reach the port.
+    auth: str = ""
     allow_hosts: str = ALLOW_HOSTS
     addon: str = field(default=ADDON)
     extra: tuple[str, ...] = ()
@@ -43,6 +46,8 @@ def build_argv(options: LaunchOptions, *, mitmdump: str = "mitmdump") -> list[st
         # Chain through an existing proxy so the sidecar does not need its own
         # route to Google (e.g. a Clash mixed-port on the same machine).
         argv += ["--mode", f"upstream:{options.upstream}"]
+    if options.auth:
+        argv += ["--set", f"proxyauth={options.auth}"]
     if options.allow_hosts:
         argv += ["--set", f"allow_hosts={options.allow_hosts}"]
     argv += ["--set", f"g1_state={state_path(options.state)}"]
@@ -53,7 +58,24 @@ def build_argv(options: LaunchOptions, *, mitmdump: str = "mitmdump") -> list[st
 
 
 def describe(argv: list[str]) -> str:
-    return " ".join(shlex.quote(part) for part in argv)
+    """Shell-quoted command, with any credential masked."""
+    masked = []
+    for part in argv:
+        if part.startswith("proxyauth="):
+            user, _, _secret = part.partition("=")[2].partition(":")
+            part = f"proxyauth={user}:***"
+        masked.append(part)
+    return " ".join(shlex.quote(item) for item in masked)
+
+
+def validate_auth(value: str) -> str:
+    """``user:password`` with a non-empty user and password."""
+    user, separator, password = (value or "").partition(":")
+    if not value:
+        return ""
+    if not separator or not user or not password:
+        raise ValueError("--auth must look like user:password")
+    return value
 
 
 if __name__ == "__main__":  # pragma: no cover

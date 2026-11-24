@@ -17,6 +17,18 @@ jobs:
           uv venv --python 3.12
           uv pip install --python .venv/bin/python -r requirements.txt pytest pyyaml
 
+      - name: Install mihomo (best effort)
+        # Without the binary the mihomo-backed cases skip, so a download failure
+        # must not turn the build red.
+        continue-on-error: true
+        run: |
+          VERSION=1.19.34
+          curl -fsSL -o mihomo.gz \
+            "https://github.com/MetaCubeX/mihomo/releases/download/v${VERSION}/mihomo-linux-amd64-v${VERSION}.gz" \
+            && gunzip -f mihomo.gz \
+            && install -m 0755 mihomo /usr/local/bin/mihomo \
+            && mihomo -v
+
       - name: Run the offline suite
         # The mihomo-backed cases skip when the binary is absent; everything
         # else (including the mitmdump end-to-end chain) runs here.

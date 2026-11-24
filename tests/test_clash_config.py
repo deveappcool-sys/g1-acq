@@ -34,8 +34,15 @@ def snippet() -> dict:
     return yaml.safe_load(SNIPPET.read_text(encoding="utf-8"))
 
 
+TRAILING_FLAGS = {"no-resolve", "src"}
+
+
 def split_rule(rule: str) -> tuple[str, str]:
-    """Split ``TYPE,payload,POLICY`` at the commas outside parentheses."""
+    """Return ``(TYPE, POLICY)`` from ``TYPE,payload[,params],POLICY[,flags]``.
+
+    Commas inside the ``((...))`` of a logical rule must not split the string,
+    and IP rules carry ``no-resolve`` / ``src`` after the policy.
+    """
     parts: list[str] = []
     depth = 0
     current = ""
@@ -50,6 +57,8 @@ def split_rule(rule: str) -> tuple[str, str]:
         else:
             current += character
     parts.append(current)
+    while len(parts) > 2 and parts[-1] in TRAILING_FLAGS:
+        parts.pop()
     return parts[0], parts[-1]
 
 
@@ -121,6 +130,45 @@ def test_snippet_is_a_subset_of_the_profile(profile, snippet):
     assert snippet["proxy-groups"][0]["name"] == GROUP
     assert snippet["proxy-groups"][0]["type"] == "select"
     assert SIDECAR in snippet["proxy-groups"][0]["proxies"]
+
+
+
+def test_proxy_group_members_all_resolve(profile):
+    """A group pointing at a renamed/deleted proxy makes mihomo refuse to start."""
+    known = names(profile) | BUILTIN_POLICIES
+    for group in profile["proxy-groups"]:
+        for member in group.get("proxies", []):
+            assert member in known, (
+                f"group {group['name']!r} references unknown member {member!r}; "
+                "if a proxy was renamed, update the group too"
+            )
+
+
+def test_private_networks_are_not_pushed_through_the_node(profile):
+    rules = profile["rules"]
+    match_index = next(index for index, rule in enumerate(rules) if rule.startswith("MATCH,"))
+    private = [
+        index
+        for index, rule in enumerate(rules)
+        if rule.startswith("IP-CIDR,") and rule.endswith(",DIRECT,no-resolve")
+    ]
+    assert private, "LAN traffic must not be routed to the proxy node"
+    for index in private:
+        assert index < match_index
+
+
+def test_quic_is_sniffed(profile):
+    sniff = profile["sniffer"]["sniff"]
+    assert "QUIC" in sniff, "without QUIC sniffing the UDP guard can miss real QUIC flows"
+    assert 443 in sniff["QUIC"]["ports"]
+
+
+def test_snippet_only_uses_fields_mihomo_understands(profile, snippet):
+    """`udp` is not an HTTP-proxy option; it would be silently ignored."""
+    for config in (profile, snippet):
+        for proxy in config["proxies"]:
+            if proxy["type"] == "http":
+                assert "udp" not in proxy
 
 
 @pytest.mark.e2e

@@ -2,10 +2,16 @@
 #
 #   docker compose up -d
 #   docker compose logs -f g1-acq
-#   docker compose run --rm g1-acq python -m g1acq report --state /data/.g1-acq/state.json
+#   docker compose exec g1-acq report --state /data/.g1-acq/state.json
+#   docker compose exec g1-acq clear  --state /data/.g1-acq/state.json
 #
-# The CA lives in the volume. Export it to install on the phone with:
-#   docker compose cp g1-acq:/data/.mitmproxy/mitmproxy-ca-cert.cer ./g1-ca.cer
+# The CA lives in the named volume.  NEVER run `docker compose down -v`:
+# that deletes the volume, regenerates the CA, and every device that trusted
+# the old one must reinstall the certificate.
+#
+# Export the certificate to install on the phone with:
+#   docker compose exec g1-acq ca --confdir /data/.mitmproxy --out /data/g1-ca.der
+#   docker compose cp g1-acq:/data/g1-ca.der ./g1-ca.der
 services:
   g1-acq:
     build: .
@@ -13,20 +19,27 @@ services:
     container_name: g1-acq
     restart: unless-stopped
     ports:
+      # Publish only if the phone must reach it over the network.  Bind to the
+      # LAN address instead of 0.0.0.0 where you can, and set --auth below.
       - "8080:8080"
     volumes:
       - g1-data:/data
     environment:
-      TZ: Asia/Shanghai
-    # If the container cannot reach Google by itself, chain through a proxy
-    # that it can reach and uncomment the upstream flag:
-    # command:
-    #   - "--port"
-    #   - "8080"
-    #   - "--state"
-    #   - "/data/.g1-acq/state.json"
-    #   - "--upstream"
-    #   - "http://host.docker.internal:7890"
+      TZ: ${TZ:-Asia/Shanghai}
+    # Everything after the image runs as `python -m g1acq ...`.  Add
+    # `--auth user:password` and the same credentials to the Clash G1-MITM
+    # proxy; add `--upstream http://host.docker.internal:7890` if the container
+    # cannot reach Google by itself (Linux also needs:
+    #   extra_hosts: ["host.docker.internal:host-gateway"]
+    # ).
+    command:
+      - "serve"
+      - "--bind"
+      - "0.0.0.0"
+      - "--port"
+      - "8080"
+      - "--state"
+      - "/data/.g1-acq/state.json"
 
 volumes:
   g1-data:

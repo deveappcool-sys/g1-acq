@@ -58,8 +58,9 @@ class FileStore:
             raw = self.path.read_text(encoding="utf-8")
         except FileNotFoundError:
             return {}
-        except OSError:
-            return {}
+        # Any other OSError (permissions, a directory in the way, a full disk)
+        # is a real storage problem and must reach the caller, so the report
+        # can show "storage unavailable" instead of "everything is fine".
         try:
             data = json.loads(raw)
         except (ValueError, TypeError):

@@ -62,3 +62,33 @@ def test_extra_flags_are_appended_verbatim():
         launch.LaunchOptions(extra=("--set", "confdir=/tmp/mitm"))
     )
     assert argv[-2:] == ["--set", "confdir=/tmp/mitm"]
+
+
+def test_auth_is_forwarded_as_proxyauth():
+    argv = launch.build_argv(launch.LaunchOptions(auth="g1:s3cret"))
+    assert _pairs(argv)["proxyauth"] == "g1:s3cret"
+
+
+def test_credentials_are_masked_in_the_echoed_command():
+    argv = launch.build_argv(launch.LaunchOptions(auth="g1:s3cret"))
+    printed = launch.describe(argv)
+    assert "s3cret" not in printed
+    assert "proxyauth=g1:***" in printed
+
+
+def test_validate_auth_rejects_malformed_values():
+    assert launch.validate_auth("") == ""
+    assert launch.validate_auth("g1:pa:ss") == "g1:pa:ss"
+    for bad in ("nocolon", ":nouser", "user:"):
+        try:
+            launch.validate_auth(bad)
+        except ValueError:
+            continue
+        raise AssertionError(f"{bad!r} should have been rejected")
+
+
+def test_serve_refuses_an_invalid_target_before_starting(monkeypatch):
+    from g1acq import __main__ as cli
+
+    rc = cli.main(["serve", "--target", "not a sku!"])
+    assert rc == 2

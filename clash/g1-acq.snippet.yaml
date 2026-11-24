@@ -18,7 +18,9 @@ proxies:
     server: 192.168.1.10
     port: 8080
     tls: false
-    udp: false
+    # If you started the sidecar with G1_AUTH / --auth, put the same
+    # credentials here.  Without matching credentials mihomo cannot use the
+    # sidecar once authentication is enabled.
     # username: "g1"
     # password: "change-me"
 

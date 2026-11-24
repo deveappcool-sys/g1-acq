@@ -2,13 +2,15 @@
 
 Google One（iOS）订阅入口的**商品 ID 改写与被动采集**工具，用于 **Clash - Rule Based Proxy**（mihomo 内核）及其它 mihomo 客户端。
 
+> ⚠️ **仅供研究与兼容性测试。** 本项目通过改写客户端收到的商品编号来观察商店行为，这可能违反 Google / Apple 的服务条款；请勿用于获取未付费的权益，测试过程中不要真正完成购买。作者不对使用后果负责，也不保证任何商品、价格或权益可用。
+
 本仓库是从 Shadowrocket 版 `g1-acq` v7.5.0 **完全改造**而来：不再有 `.sgmodule` 和 `http-response` 脚本，改由 **Clash 配置** 负责分流、**旁路服务** 负责改写。
 
 ---
 
 ## 1. 先说清楚：为什么不是一个 YAML 就够
 
-Clash / mihomo 是**规则分流器**：它决定一条连接走哪个出口，但**不会解密 TLS，也没有响应体改写能力**。Clash Verge 的「重写 / MITM」功能请求（[clash-verge-rev#727](https://github.com/clash-verge-rev/clash-verge-rev/issues/727)）至今没有实现，mihomo 官方能力表里也只有规则、DNS、TUN、sniffer、代理协议这些。
+Clash / mihomo 是**规则分流器**：它决定一条连接走哪个出口，但**不会解密 TLS，也没有响应体改写能力**。mihomo 的配置项里不存在 MITM、rewrite 一类的条目（可用 `mihomo -t` 与官方文档核对），社区提出的「重写 / MITM」功能请求（[clash-verge-rev#727](https://github.com/clash-verge-rev/clash-verge-rev/issues/727)）也说明这不是改 YAML 能解决的事。
 
 而本项目的核心动作是「把 `one.google.com` 响应正文里的 SKU 字符串换掉」。这一步必须在**持有该域名 TLS 会话的一端**完成，所以只能落在 Clash 之外。
 
@@ -63,7 +65,7 @@ iPhone (Google App)
 在 Mac / Linux / NAS 上：
 
 ```bash
-git clone <this-repo> g1-acq && cd g1-acq
+git clone https://github.com/crhywun/g1-acq.git && cd g1-acq
 
 # 用 uv（推荐）
 uv venv --python 3.12 .venv
@@ -72,10 +74,12 @@ uv pip install --python .venv/bin/python -r requirements.txt
 # 或者用系统 Python
 # python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 
-./run.sh                       # 监听 0.0.0.0:8080
+./run.sh                                  # 监听 0.0.0.0:8080，无认证
+
+G1_AUTH=g1:change-me ./run.sh             # 推荐：要求代理认证
 ```
 
-也可以直接用 Docker：
+也可以直接用 Docker（认证通过 compose 里的 `command:` 追加，见 [docker-compose.yml](docker-compose.yml)）：
 
 ```bash
 docker compose up -d
@@ -89,6 +93,10 @@ docker compose up -d
 G1_UPSTREAM=http://127.0.0.1:7890 ./run.sh
 ```
 
+> 上游代理**不能**把 `one.google.com` 再送回来，否则两个代理会互相转发成环。让上游配置里 `one.google.com` 走 `DIRECT`。
+
+> **安全**：旁路默认是一个**无认证的 HTTP 代理**，绑在 `0.0.0.0`。同网段的人可以用它代理任意请求、访问旁路主机的内网服务，也能读取和清空报告页。所以：能用 `G1_AUTH=user:password` 就用，并在 Clash 的 `G1-MITM` 里填同样的 `username` / `password`；不能认证时用防火墙限制来源 IP。
+
 ### 3.2 把根证书装到手机
 
 iOS 必须信任这张 CA，否则 `one.google.com` 的页面会直接报错。
@@ -98,12 +106,17 @@ iOS 必须信任这张 CA，否则 `one.google.com` 的页面会直接报错。
 .venv/bin/python -m g1acq ca --out g1-acq-ca.der
 ```
 
-导出的 `g1-acq-ca.der` 通过 AirDrop / 文件传输发到手机，然后：
+导出的 `g1-acq-ca.der` 通过 AirDrop / 文件 App 发到手机，然后：
 
-1. iOS **设置 → 通用 → VPN 与设备管理**，安装这个描述文件；或
-2. **设置 → 已下载描述文件** → 安装。
+1. 在手机上**点开这个文件**，系统提示「已下载描述文件」。
+2. **设置 → 通用 → VPN 与设备管理 → 已下载的描述文件** → 选择证书 → **安装**（需要输入锁屏密码）。
+3. **设置 → 通用 → 关于本机 → 证书信任设置** → 打开该根证书的 **完全信任**。
 
-安装后在 iOS **设置 → 通用 → 关于本机 → 证书信任设置** 中打开 **完全信任**（这一步不做等于没装）。
+第 3 步不做，浏览器和 App 仍会判定证书不可信。个别 iOS 18 小版本出现过装完证书后「证书信任设置」里不出现该条目的问题，升级系统或删除后重装可解。
+
+> Docker 部署时 CA 在容器的 `/data/.mitmproxy/`，导出命令见 [docs/clash-setup.md](docs/clash-setup.md#3-证书)。
+
+> **可能失败的情况**：如果 Google App 对 `one.google.com` 做了证书固定（pinning），拦截会直接失败。本项目只在本机验证过 `mitmdump` 对真实 `one.google.com` 的拦截可用（见[第 9 节](#9-验证范围)），没有在真实 Google App 里验证过。
 
 > 便捷方式：临时在 Clash 规则里加一条 `DOMAIN,mitm.it,G1`，用 Safari 打开 `http://mitm.it` 下载。mitmproxy 默认导出的 `.cer` 是 **PEM 编码**，个别 iOS 版本会提示「无法验证」——遇到就用上面的 DER 方式。
 
@@ -170,6 +183,8 @@ proxies:
 .venv/bin/python -m g1acq clear  --state ~/.g1-acq/state.json
 ```
 
+`?clear=1` 是 GET 请求，任何能访问到这个旁路的人都能读报告、也能触发清空——这也是建议开启 `G1_AUTH` 的原因之一。
+
 记录保存在**旁路主机**的 `~/.g1-acq/state.json`，键名与 Shadowrocket 版一致（`g1.sku.scan.v1`、`g1.pro.annual.test.v1`，`schemaVersion: 1`）。
 
 | 键 | 内容 |
@@ -183,7 +198,7 @@ proxies:
 
 ## 5. 关闭与回滚
 
-- **临时关掉改写**：在 Clash 里把代理组 `G1` 切换到 `DIRECT`，`one.google.com` 就恢复直连。
+- **临时关掉改写**：在 Clash 里把代理组 `G1` 切换到 `DIRECT`，`one.google.com` 的 TCP 流量恢复直连。QUIC 那条 `REJECT-DROP` 仍然生效（该域名的 HTTP/3 会被丢弃、回落到 TCP），不影响可用性；要彻底恢复，把那条规则一起注释掉。
 - **彻底移除**：删掉配置文件里的 `G1-MITM`、`G1` 组和三条规则即可；旁路服务不再收到流量。
 - **删掉证书**：iOS **设置 → 通用 → VPN 与设备管理** 移除描述文件，并在证书信任设置里关闭。
 
@@ -198,7 +213,7 @@ uv pip install --python .venv/bin/python pytest pyyaml
 
 用 `python3 -m venv .venv` 建的虚拟环境自带 pip，把第一行换成 `.venv/bin/pip install pytest pyyaml` 即可。
 
-76 个测试分四层：
+86 个测试分四层：
 
 | 层 | 内容 |
 |---|---|
@@ -236,3 +251,23 @@ uv pip install --python .venv/bin/python pytest pyyaml
 - **权限**：旁路不申请定位、相册、通知；不需要 root。iOS 侧只需一次描述文件与证书信任。
 - **全局影响**：本版把 QUIC 拦截**限定在 `one.google.com`**，不再像 Shadowrocket 版那样丢弃全局 UDP 443，其它 App 的 HTTP/3 不受影响。
 - **不算证据的地方**：命中计数只证明字符串替换成功，不证明 App Store 接受该商品，也不证明订阅周期或权益。采集清单只包含服务器实际下发的编号，不是完整商品目录；旁路自己生成的替换目标不会写回清单。
+
+---
+
+## 9. 验证范围
+
+已在本机完成（macOS，mitmproxy 12.3.1，mihomo 1.19.34）：
+
+- 86 个测试全部通过，含 `客户端 → mihomo → 旁路 → 假 Google` 的真实进程链路；
+- 用真实 `mihomo -t` 解析本仓库的配置，规则出口、逻辑规则子项都能解析；
+- 用真实 `mitmdump` 对 **`one.google.com` 真实站点**做了一次 HTTPS 拦截与透传：页面 368 KB、标题与内容完整无损坏，报告页与日志正常，采集按预期记为 `no-skus`；
+- 代理认证（`G1_AUTH`）在 `run.sh` 下实测：无凭据与错误凭据返回 407，正确凭据返回 200。
+
+未验证（需要你的设备与账号）：
+
+- iPhone 上导入 `clash/g1-acq.yaml` 的实机步骤；
+- iOS 证书安装与「完全信任」的具体界面；
+- Google App 内 StoreKit 收银台的真实商品、价格与周期；
+- Docker 镜像构建（开发机没有 Docker，只验证了等价的启动命令）。
+
+这些都需要你自己在设备上跑一遍再下结论。

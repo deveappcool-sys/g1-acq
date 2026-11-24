@@ -51,7 +51,7 @@ def now_iso() -> str:
 
 def parse_iso(value: Any) -> datetime | None:
     """Strict ISO-8601 parse: the value must round-trip exactly."""
-    if not isinstance(value, str) or not _AT_RE.match(value):
+    if not isinstance(value, str) or not _AT_RE.fullmatch(value):
         return None
     try:
         parsed = datetime.strptime(value, "%Y-%m-%dT%H:%M:%S.%fZ").replace(
@@ -165,7 +165,7 @@ def collect(
         if not isinstance(row, dict):
             continue
         sku = row.get("id")
-        if not isinstance(sku, str) or not VALID_ID_RE.match(sku) or sku in by_id:
+        if not isinstance(sku, str) or not VALID_ID_RE.fullmatch(sku) or sku in by_id:
             continue
         last_seen = row.get("lastSeen")
         by_id[sku] = {
@@ -186,7 +186,7 @@ def collect(
         text = ESCAPED_DOT_RE.sub(".", body)
         for match in TOKEN_RE.finditer(text):
             sku = match.group(2)
-            if not VALID_ID_RE.match(sku):
+            if not VALID_ID_RE.fullmatch(sku):
                 continue
             found[sku] = found.get(sku, 0) + 1
             occurrences += 1

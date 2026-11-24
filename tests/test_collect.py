@@ -193,3 +193,16 @@ def test_collector_logs_each_candidate_once():
     candidate_lines = [line for line in h.logs if line.endswith(" x2")]
     assert f"[g1-acq] {SOURCE} x2" in candidate_lines
     assert f"[g1-acq] {OTHER_SOURCE} x1" not in candidate_lines
+
+
+def test_trailing_newline_ids_are_rejected_on_reload():
+    """A stored id must match the whole string, not just up to a newline."""
+    stored = {
+        "schemaVersion": 1,
+        "skus": [{"id": SOURCE + "\n", "count": 9}, {"id": SOURCE, "count": 1}],
+    }
+    h = Harness({SCAN_KEY: json.dumps(stored)})
+    h.response("nothing here", "https://one.google.com/plans")
+    ids = [row["id"] for row in h.get(SCAN_KEY)["skus"]]
+    assert ids == [SOURCE]
+    assert h.get(SCAN_KEY)["skus"][0]["count"] == 1

@@ -1,23 +1,18 @@
-[build-system]
-requires = ["setuptools>=68"]
-build-backend = "setuptools.build_meta"
-
+# Project metadata and tool configuration.
+#
+# This is NOT an installable distribution: the sidecar is run from the checkout
+# (./run.sh, `python -m g1acq serve`) or from the container image, because the
+# mitmproxy addon entrypoint (g1_addon.py) lives at the repository root.
 [project]
 name = "g1-acq-clash"
 version = "8.0.0"
 description = "Google One iOS SKU rewrite sidecar for Clash / mihomo"
 readme = "README.md"
 requires-python = ">=3.12"
-dependencies = ["mitmproxy>=10"]
+dependencies = ["mitmproxy>=12,<13"]
 
 [project.optional-dependencies]
 dev = ["pytest>=8", "pyyaml>=6"]
-
-[project.scripts]
-g1-acq = "g1acq.__main__:main"
-
-[tool.setuptools]
-packages = ["g1acq"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

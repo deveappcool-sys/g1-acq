@@ -50,7 +50,7 @@ def _text(value: Any, length: int = 180) -> str:
 
 
 def _sku(value: Any) -> str:
-    return value if isinstance(value, str) and SKU_RE.match(value) else ""
+    return value if isinstance(value, str) and SKU_RE.fullmatch(value) else ""
 
 
 def _rows(value: Any, with_time: bool, default_target: str) -> list[dict]:
@@ -61,7 +61,7 @@ def _rows(value: Any, with_time: bool, default_target: str) -> list[dict]:
         if not isinstance(row, dict):
             continue
         row_id = row.get("id")
-        if not isinstance(row_id, str) or not ID_RE.match(row_id):
+        if not isinstance(row_id, str) or not ID_RE.fullmatch(row_id):
             continue
         item = {"id": row_id, "count": prior_count(row.get("count"))}
         if with_time:
@@ -214,7 +214,7 @@ def build_report(
     test_raw = load(config.TEST_KEY)
 
     recorded_target = _sku(test_raw.get("target"))
-    if not recorded_target and LEGACY_VERSION_RE.match(_text(test_raw.get("version"), 32)):
+    if not recorded_target and LEGACY_VERSION_RE.fullmatch(_text(test_raw.get("version"), 32)):
         recorded_target = config.LEGACY_TARGET
 
     matched_from = _rows(test_raw.get("matchedFrom"), False, recorded_target)

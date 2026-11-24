@@ -1,12 +1,20 @@
 """mitmproxy addon: the network edge of G1 ACQ.
 
-Run it behind mihomo (Clash):
+Run it behind mihomo (Clash).  Prefer the launcher, which sets every flag:
 
-    mitmdump -s g1_addon.py --set g1_state=~/.g1-acq/state.json
+    python -m g1acq serve --port 8080 --auth user:password
+
+Running mitmdump by hand only works if you reproduce the same options, in
+particular ``allow_hosts`` -- without it mitmproxy intercepts *every* TLS
+connection that reaches it:
+
+    mitmdump -s g1_addon.py -p 8080 \
+        --set 'allow_hosts=^one\.google\.com(:\d+)?$' \
+        --set proxyauth=user:password \
+        --set g1_state=~/.g1-acq/state.json
 
 mihomo routes ``one.google.com`` to this proxy; everything else keeps using the
-user's normal nodes.  Only ``one.google.com`` is intercepted, so the certificate
-authority generated here never sees unrelated traffic.
+user's normal nodes.
 """
 
 from __future__ import annotations
