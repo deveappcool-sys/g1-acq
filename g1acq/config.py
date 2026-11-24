@@ -14,8 +14,8 @@ from types import MappingProxyType
 # --------------------------------------------------------------------------
 # Release identity
 # --------------------------------------------------------------------------
-PROJECT_VERSION = "8.0.0"
-REPORT_VERSION = "v8.0.0"
+PROJECT_VERSION = "8.1.0"
+REPORT_VERSION = "v8.1.0"
 # Written into every collection record so the report can tell an old record
 # from a record produced by the current collector.
 COLLECTOR_VERSION = "g1-acq-clash-v8.0"

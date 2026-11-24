@@ -27,7 +27,7 @@ from e2e_support import (
     openssl_available,
 )
 
-from g1acq import launch, profile
+from g1acq import config, launch, profile
 
 pytestmark = pytest.mark.e2e
 
@@ -147,7 +147,7 @@ def test_report_page_is_answered_locally(chain):
         chain["sidecar_port"], "one.google.com", "/g1-sku-report"
     )
     assert status == 200
-    assert headers["X-G1-Report-Version"] == "v8.0.0"
+    assert headers["X-G1-Report-Version"] == config.REPORT_VERSION
     assert headers["Cache-Control"] == "no-store"
     text = body.decode("utf-8")
     assert "G1 ACQ 旁路已接管" in text

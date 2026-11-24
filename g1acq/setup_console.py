@@ -53,7 +53,7 @@ border-radius:9px;font:inherit;margin-top:8px}
 pre{white-space:pre-wrap;word-break:break-all;font-size:12px;background:#eef2f7;
 padding:10px;border-radius:8px}
 </style>
-<h1>G1 ACQ 安装控制台</h1>
+<h1>G1 ACQ 安装控制台 <span class=muted style="font-size:13px">v{{VERSION}}</span></h1>
 <p class=muted>这里的东西都由这台机器实时生成，不需要手改配置。</p>
 
 <section>
@@ -187,6 +187,7 @@ class SetupConsole:
         except Exception:
             fingerprint = ""
         return {
+            "version": config.PROJECT_VERSION,
             "server": self._host,
             "port": self.sidecar_port,
             "console_port": self.port,
@@ -209,6 +210,7 @@ class SetupConsole:
         html = (
             PAGE.replace("{{SERVER}}", self._host)
             .replace("{{PORT}}", str(self.sidecar_port))
+            .replace("{{VERSION}}", config.PROJECT_VERSION)
             .replace("{{MAX_SUB}}", str(MAX_SUBSCRIPTION_LENGTH))
             .replace("{{CLASH_URL_ENCODED}}", urllib.parse.quote(clash_url, safe=""))
             .replace("{{CLASH_URL}}", clash_url)

@@ -4,7 +4,7 @@
 
 > ⚠️ **仅供研究与兼容性测试。** 改写商品编号来观察商店行为可能违反 Google / Apple 的服务条款。请把这一轮当作只读观察：**看到收银台就记录，不要真正完成付款**，也不要用于获取未付费权益。
 
-当前版本：项目 `8.0.0`，报告 `v8.0.0`，采集/改写脚本 `g1-acq-clash-v8.0`。
+当前版本：项目 `8.1.0`，报告 `v8.1.0`，采集/改写脚本 `g1-acq-clash-v8.0`。
 
 ---
 
@@ -77,7 +77,7 @@
 
 | 字段 | 含义 |
 |---|---|
-| `reportVersion` | 报告渲染版本，当前 `v8.0.0` |
+| `reportVersion` | 报告渲染版本，当前 `v8.1.0` |
 | `configuredTarget` | 当前配置的 2TB 候选；用 `--target` 覆盖时会随之变化 |
 | `storageAvailable` | 状态文件是否可读 |
 | `schemaVersion` | 恒为 `1` |
@@ -143,7 +143,7 @@
 [g1-acq] g1-acq-clash-v8.0 hits=4 annualHits=2
 [g1-acq] g1.ios.2tb.monthly.v1 -> g1.2tb.ai.12months_ip_90p x2
 [g1-acq] g1.ios.30tb.ai.pro.m -> g1.ai.ultra.3months_ip_75p.acq x1 fallback=75p
-[g1-sku-report] v8.0.0 html storage=ready candidates=4
+[g1-sku-report] v8.1.0 html storage=ready candidates=4
 ```
 
 | 标记 | 含义 |
@@ -198,13 +198,13 @@ https://one.google.com/g1-sku-report?clear=1
 ```text
 采集 / 测试时间（含时区）：[填写]
 iOS / Google App / Clash 版本：[填写]
-旁路版本：8.0.0
+旁路版本：8.1.0
 旁路主机与地址：[填写 例如 192.168.1.10:8080]
-Clash 配置来源：[完整配置 g1-acq.yaml / 合并片段]
+Clash 配置来源：[控制台生成（只做 G1 / 带订阅）/ 手动合并片段]
 G1 组当前选择：[G1-MITM / DIRECT]
 证书安装与完全信任：[是 / 否]
-报告页标记：[填写实际显示；应为 "G1 ACQ 旁路已接管 · v8.0.0"]
-reportVersion：[填写；当前 v8.0.0]
+报告页标记：[填写实际显示；应为 "G1 ACQ 旁路已接管 · v8.1.0"]
+reportVersion：[填写；当前 v8.1.0]
 scan.version：[填写实际保存值]
 打开方案前 scannedResponses / matchedResponses / nonTextResponses：[填写]
 打开方案后 scannedResponses / matchedResponses / nonTextResponses：[填写]
