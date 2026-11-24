@@ -1,0 +1,194 @@
+"""mitmproxy addon: the network edge of G1 ACQ.
+
+Run it behind mihomo (Clash):
+
+    mitmdump -s g1_addon.py --set g1_state=~/.g1-acq/state.json
+
+mihomo routes ``one.google.com`` to this proxy; everything else keeps using the
+user's normal nodes.  Only ``one.google.com`` is intercepted, so the certificate
+authority generated here never sees unrelated traffic.
+"""
+
+from __future__ import annotations
+
+import logging
+import os
+import re
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+from mitmproxy import ctx, http  # noqa: E402
+
+from g1acq import config  # noqa: E402
+from g1acq.app import G1App  # noqa: E402
+from g1acq.store import FileStore  # noqa: E402
+
+DEFAULT_STATE = "~/.g1-acq/state.json"
+
+_CHARSET_RE = re.compile(r"charset\s*=\s*\"?([A-Za-z0-9._:-]+)", re.IGNORECASE)
+_BINARY_TYPES = (
+    "image/",
+    "audio/",
+    "video/",
+    "font/",
+    "application/zip",
+    "application/gzip",
+    "application/x-protobuf",
+    "application/protobuf",
+    "application/grpc",
+    "application/octet-stream",
+    "application/pdf",
+    "application/wasm",
+)
+
+
+def _charset(content_type: str) -> str:
+    match = _CHARSET_RE.search(content_type or "")
+    return match.group(1) if match else "utf-8"
+
+
+def _is_binary(content_type: str) -> bool:
+    lowered = (content_type or "").lower()
+    return any(lowered.startswith(prefix) for prefix in _BINARY_TYPES)
+
+
+def _info(message: str) -> None:
+    """Log through mitmproxy when bound, plain logging otherwise (tests)."""
+    log = getattr(ctx, "log", None)
+    if log is None:
+        logging.getLogger("g1-acq").info(message)
+    else:
+        log.info(message)
+
+
+def _error(message: str) -> None:
+    log = getattr(ctx, "log", None)
+    if log is None:
+        logging.getLogger("g1-acq").error(message)
+    else:
+        log.error(message)
+
+
+class G1Addon:
+    def __init__(self) -> None:
+        self.app: G1App | None = None
+        self.settings = config.SETTINGS
+        self._logger = logging.getLogger("g1-acq")
+
+    # -- mitmproxy lifecycle --------------------------------------------
+    def load(self, loader) -> None:
+        loader.add_option(
+            name="g1_state",
+            typespec=str,
+            default=DEFAULT_STATE,
+            help="JSON file holding the SKU inventory and the last rewrite record.",
+        )
+        loader.add_option(
+            name="g1_target",
+            typespec=str,
+            default="",
+            help=f"Override the 2TB target SKU (default: {config.DEFAULT_TARGET}).",
+        )
+        loader.add_option(
+            name="g1_max_body",
+            typespec=int,
+            default=0,
+            help="Skip response bodies larger than this many bytes (0 = no limit).",
+        )
+
+    def configure(self, updated) -> None:
+        if not {"g1_state", "g1_target", "g1_max_body"} & set(updated):
+            return
+        self._rebuild(force=True)
+
+    def running(self) -> None:
+        self._rebuild()
+        _info(
+            f"[g1-acq] {config.PROJECT_VERSION} ready: target={self.settings.target}"
+            f" state={self._state_path()}"
+        )
+
+    def done(self) -> None:
+        self.app = None
+
+    # -- helpers ---------------------------------------------------------
+    def _state_path(self) -> str:
+        raw = (ctx.options.g1_state or "").strip() or DEFAULT_STATE
+        return os.path.abspath(os.path.expanduser(raw))
+
+    def _rebuild(self, force: bool = False) -> None:
+        target = (ctx.options.g1_target or "").strip() or config.DEFAULT_TARGET
+        try:
+            self.settings = config.Settings(
+                target=target, max_body_bytes=int(ctx.options.g1_max_body or 0)
+            )
+        except ValueError as error:
+            _error(f"[g1-acq] invalid option, using defaults: {error}")
+            self.settings = config.SETTINGS
+        if self.app is not None and not force:
+            self.app.settings = self.settings
+            return
+        store = FileStore(self._state_path())
+        self.app = G1App(store, settings=self.settings, emit=_info)
+
+    # -- hooks -----------------------------------------------------------
+    def request(self, flow: http.HTTPFlow) -> None:
+        """Answer ``/g1-sku-report`` locally instead of forwarding it."""
+        if flow.response is not None or self.app is None:
+            return
+        try:
+            report = self.app.report_for(flow.request.pretty_url)
+        except Exception as error:  # pragma: no cover - defensive
+            _error(f"[g1-acq] report hook failed: {error!r}")
+            return
+        if report is None:
+            return
+        flow.response = http.Response.make(
+            report.status,
+            report.body.encode("utf-8"),
+            report.headers,
+        )
+
+    def response(self, flow: http.HTTPFlow) -> None:
+        """Scan for candidate SKUs and rewrite ``/ai?`` bodies."""
+        if flow.response is None or self.app is None:
+            return
+        try:
+            body = self._decoded_body(flow.response)
+            replacement = self.app.on_response(flow.request.pretty_url, body)
+        except Exception as error:  # never break the user's browsing
+            _error(f"[g1-acq] response hook failed: {error!r}")
+            return
+        if replacement is None:
+            return
+        try:
+            flow.response.set_text(replacement)
+        except Exception as error:  # pragma: no cover - defensive
+            _error(f"[g1-acq] could not apply rewrite: {error!r}")
+
+    def _decoded_body(self, response: http.Response) -> str | None:
+        content_type = response.headers.get("content-type", "")
+        if _is_binary(content_type):
+            return None
+        if response.raw_content is None:
+            # No body at all (HEAD, 304): nothing to scan.
+            return None
+        limit = self.settings.max_body_bytes
+        if limit and len(response.raw_content) > limit:
+            return None
+        try:
+            content = response.get_content(strict=True)
+        except ValueError:
+            return None
+        if content is None:
+            return None
+        try:
+            # An empty body stays "" and is counted as an empty text response,
+            # matching the original contract.
+            return content.decode(_charset(content_type), errors="strict")
+        except (UnicodeDecodeError, LookupError):
+            return None
+
+
+addons = [G1Addon()]

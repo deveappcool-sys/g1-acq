@@ -1,0 +1,35 @@
+# =============================================================================
+# G1 ACQ · merge snippet
+#
+# Use this when you want to keep your current Clash profile.  Copy each block
+# into the matching top-level section of your profile:
+#
+#   1. `proxies:`       -> add the G1-MITM entry (edit server/port!)
+#   2. `proxy-groups:`  -> add the G1 entry
+#   3. `rules:`         -> insert the three rules BEFORE your final MATCH rule
+#
+# If your profile already ends with `- MATCH,...,PROXY`, the G1 rules must sit
+# above it, otherwise one.google.com never reaches the sidecar.
+# =============================================================================
+
+proxies:
+  - name: "G1-MITM"
+    type: http
+    server: 192.168.1.10
+    port: 8080
+    tls: false
+    udp: false
+    # username: "g1"
+    # password: "change-me"
+
+proxy-groups:
+  - name: "G1"
+    type: select
+    proxies:
+      - "G1-MITM"
+      - DIRECT
+
+rules:
+  - AND,((NETWORK,udp),(DST-PORT,443),(DOMAIN,one.google.com)),REJECT-DROP
+  - DOMAIN,one.google.com,G1
+  - DOMAIN-SUFFIX,one.google.com,G1

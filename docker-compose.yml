@@ -1,0 +1,32 @@
+# G1 ACQ sidecar for Clash / mihomo.
+#
+#   docker compose up -d
+#   docker compose logs -f g1-acq
+#   docker compose run --rm g1-acq python -m g1acq report --state /data/.g1-acq/state.json
+#
+# The CA lives in the volume. Export it to install on the phone with:
+#   docker compose cp g1-acq:/data/.mitmproxy/mitmproxy-ca-cert.cer ./g1-ca.cer
+services:
+  g1-acq:
+    build: .
+    image: g1-acq:8.0.0
+    container_name: g1-acq
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - g1-data:/data
+    environment:
+      TZ: Asia/Shanghai
+    # If the container cannot reach Google by itself, chain through a proxy
+    # that it can reach and uncomment the upstream flag:
+    # command:
+    #   - "--port"
+    #   - "8080"
+    #   - "--state"
+    #   - "/data/.g1-acq/state.json"
+    #   - "--upstream"
+    #   - "http://host.docker.internal:7890"
+
+volumes:
+  g1-data:

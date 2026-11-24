@@ -1,0 +1,118 @@
+# =============================================================================
+# G1 ACQ · Clash / mihomo profile for "Clash - Rule Based Proxy" (iOS) and any
+# other mihomo-based client.
+#
+# What this profile does: it sends one single domain (one.google.com) to the
+# G1 ACQ sidecar, which is an HTTP proxy doing TLS interception plus the
+# three-tier SKU rewrite.  Every other connection keeps using your own nodes.
+#
+# Read docs/clash-setup.md before importing.  The only mandatory edit is the
+# `G1-MITM` server address below.
+# =============================================================================
+
+mixed-port: 7890
+allow-lan: false
+mode: rule
+log-level: info
+ipv6: false
+unified-delay: true
+tcp-concurrent: true
+
+profile:
+  store-selected: true
+  store-fake-ip: true
+
+dns:
+  enable: true
+  ipv6: false
+  # fake-ip keeps the domain visible to the rule engine, which is what makes
+  # `DOMAIN,one.google.com,...` reliable even though the app connects to an IP.
+  enhanced-mode: fake-ip
+  fake-ip-range: 198.18.0.1/16
+  fake-ip-filter:
+    - "*.lan"
+    - "*.local"
+    - "localhost.ptlogin2.qq.com"
+  default-nameserver:
+    - 223.5.5.5
+    - 119.29.29.29
+  nameserver:
+    - https://dns.alidns.com/dns-query
+    - https://doh.pub/dns-query
+  # Used only to resolve the sidecar/proxy hostnames themselves.
+  proxy-server-nameserver:
+    - https://dns.alidns.com/dns-query
+
+sniffer:
+  enable: true
+  sniff:
+    TLS:
+      ports: [443, 8443]
+    HTTP:
+      ports: [80, 8080-8880]
+  # Sniffing recovers the hostname when an app connects straight to an IP.
+  force-domain:
+    - "one.google.com"
+
+proxies:
+  # ---------------------------------------------------------------------------
+  # MANDATORY EDIT: where the G1 ACQ sidecar listens.
+  #   * same Wi-Fi as the phone  -> the Mac/Linux box LAN address
+  #   * VPS                      -> the public address
+  # Leave `tls` off: the proxy hop only carries the CONNECT line, the payload
+  # is already end-to-end TLS between the phone and the sidecar.
+  # ---------------------------------------------------------------------------
+  - name: "G1-MITM"
+    type: http
+    server: 192.168.1.10
+    port: 8080
+    tls: false
+    udp: false
+    # username: "g1"
+    # password: "change-me"
+
+  # ---------------------------------------------------------------------------
+  # Replace this placeholder with your own node(s), or delete it and use the
+  # proxy-provider variant documented in docs/clash-setup.md.
+  # ---------------------------------------------------------------------------
+  - name: "YOUR-NODE"
+    type: trojan
+    server: change.me.invalid
+    port: 443
+    password: change-me
+    sni: change.me.invalid
+    skip-cert-verify: false
+    udp: true
+
+proxy-groups:
+  - name: "PROXY"
+    type: select
+    proxies:
+      - "YOUR-NODE"
+      - DIRECT
+
+  # Keeping the sidecar behind its own group means you can switch the whole
+  # feature off (G1 -> DIRECT) without editing the rules.
+  - name: "G1"
+    type: select
+    proxies:
+      - "G1-MITM"
+      - DIRECT
+
+rules:
+  # 1) Drop QUIC (HTTP/3) for the target only, so the app retries over TCP and
+  #    the sidecar actually sees the response.  REJECT-DROP is the mihomo
+  #    equivalent of Shadowrocket's REJECT-NO-DROP: the packet is discarded
+  #    silently and the client falls back instead of failing hard.
+  #    The original module blocked UDP/443 globally; scoping it to
+  #    one.google.com keeps other apps' HTTP/3 working.
+  - AND,((NETWORK,udp),(DST-PORT,443),(DOMAIN,one.google.com)),REJECT-DROP
+
+  # 2) Everything from one.google.com goes through the sidecar.
+  - DOMAIN,one.google.com,G1
+
+  # 3) One more safety net for clients that ignore SNI/host on the first
+  #    connection; harmless when it does not match.
+  - DOMAIN-SUFFIX,one.google.com,G1
+
+  - MATCH,PROXY

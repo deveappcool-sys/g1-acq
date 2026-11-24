@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "g1-acq-clash"
+version = "8.0.0"
+description = "Google One iOS SKU rewrite sidecar for Clash / mihomo"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = ["mitmproxy>=10"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "pyyaml>=6"]
+
+[project.scripts]
+g1-acq = "g1acq.__main__:main"
+
+[tool.setuptools]
+packages = ["g1acq"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+markers = [
+    "e2e: needs mitmdump/openssl (and mihomo for rule tests); skipped when missing",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+# Deliberately narrow: the proxy catches broad exceptions on purpose so a
+# single malformed response can never break the user's browsing.
+select = ["E", "F", "I"]
+ignore = ["E501"]

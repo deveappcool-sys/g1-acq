@@ -1,0 +1,23 @@
+name: tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+
+      - name: Install sidecar dependencies
+        run: |
+          uv venv --python 3.12
+          uv pip install --python .venv/bin/python -r requirements.txt pytest pyyaml
+
+      - name: Run the offline suite
+        # The mihomo-backed cases skip when the binary is absent; everything
+        # else (including the mitmdump end-to-end chain) runs here.
+        run: .venv/bin/python -m pytest -q
