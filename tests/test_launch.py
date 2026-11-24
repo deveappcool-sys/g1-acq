@@ -92,3 +92,11 @@ def test_serve_refuses_an_invalid_target_before_starting(monkeypatch):
 
     rc = cli.main(["serve", "--target", "not a sku!"])
     assert rc == 2
+
+
+def test_console_port_is_forwarded_and_can_be_disabled():
+    argv = launch.build_argv(launch.LaunchOptions())
+    assert _pairs(argv)["g1_console"] == "8090"
+
+    argv = launch.build_argv(launch.LaunchOptions(console=0))
+    assert _pairs(argv)["g1_console"] == "0"

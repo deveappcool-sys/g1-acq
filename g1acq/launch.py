@@ -14,6 +14,7 @@ from pathlib import Path
 
 DEFAULT_STATE = "~/.g1-acq/state.json"
 DEFAULT_PORT = 8080
+DEFAULT_CONSOLE_PORT = 8090
 # Only this host is decrypted; anything else is tunnelled untouched.
 ALLOW_HOSTS = r"^one\.google\.com(:\d+)?$"
 ADDON = str(Path(__file__).resolve().parents[1] / "g1_addon.py")
@@ -29,6 +30,8 @@ class LaunchOptions:
     # "user:password" -> mitmproxy's proxyauth.  Without it the sidecar is an
     # open proxy for anyone who can reach the port.
     auth: str = ""
+    # Setup console port; 0 disables the console.
+    console: int = DEFAULT_CONSOLE_PORT
     allow_hosts: str = ALLOW_HOSTS
     addon: str = field(default=ADDON)
     extra: tuple[str, ...] = ()
@@ -48,6 +51,8 @@ def build_argv(options: LaunchOptions, *, mitmdump: str = "mitmdump") -> list[st
         argv += ["--mode", f"upstream:{options.upstream}"]
     if options.auth:
         argv += ["--set", f"proxyauth={options.auth}"]
+    if options.console is not None:
+        argv += ["--set", f"g1_console={int(options.console)}"]
     if options.allow_hosts:
         argv += ["--set", f"allow_hosts={options.allow_hosts}"]
     argv += ["--set", f"g1_state={state_path(options.state)}"]

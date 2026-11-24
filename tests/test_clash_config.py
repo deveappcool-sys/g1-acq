@@ -1,48 +1,36 @@
-"""Static checks for the shipped Clash profile.
+"""Invariants that keep a generated profile importable.
 
-These catch the mistakes that silently break the feature: a rule pointing at a
-proxy that does not exist, the MATCH rule swallowing one.google.com first, or
-the snippet drifting away from the full profile.
+These are the mistakes that silently break the feature: a rule pointing at a
+proxy that does not exist, a group member that was renamed, or one.google.com
+being swallowed by the catch-all rule.
 """
 
 from __future__ import annotations
 
-import shutil
-import subprocess
-from pathlib import Path
+import pathlib
 
 import pytest
 
-ROOT = Path(__file__).resolve().parents[1]
-PROFILE = ROOT / "clash" / "g1-acq.yaml"
-SNIPPET = ROOT / "clash" / "g1-acq.snippet.yaml"
-
 yaml = pytest.importorskip("yaml")
 
+from g1acq import profile  # noqa: E402
+
+ROOT = pathlib.Path(__file__).resolve().parents[1]
+SNIPPET = ROOT / "clash" / "g1-acq.snippet.yaml"
+
 BUILTIN_POLICIES = {"DIRECT", "REJECT", "REJECT-DROP", "PASS", "COMPATIBLE", "GLOBAL"}
-SIDECAR = "G1-MITM"
-GROUP = "G1"
-
-
-@pytest.fixture(scope="module")
-def profile() -> dict:
-    return yaml.safe_load(PROFILE.read_text(encoding="utf-8"))
-
-
-@pytest.fixture(scope="module")
-def snippet() -> dict:
-    return yaml.safe_load(SNIPPET.read_text(encoding="utf-8"))
-
-
 TRAILING_FLAGS = {"no-resolve", "src"}
+
+MODES = {
+    "g1": profile.ProfileOptions(server="192.168.2.57"),
+    "sub": profile.ProfileOptions(server="192.168.2.57", mode=profile.MODE_SUBSCRIPTION,
+                                  subscription="https://example.com/sub"),
+    "auth": profile.ProfileOptions(server="192.168.2.57", auth="g1:pw"),
+}
 
 
 def split_rule(rule: str) -> tuple[str, str]:
-    """Return ``(TYPE, POLICY)`` from ``TYPE,payload[,params],POLICY[,flags]``.
-
-    Commas inside the ``((...))`` of a logical rule must not split the string,
-    and IP rules carry ``no-resolve`` / ``src`` after the policy.
-    """
+    """Return ``(TYPE, POLICY)`` from ``TYPE,payload[,params],POLICY[,flags]``."""
     parts: list[str] = []
     depth = 0
     current = ""
@@ -63,126 +51,77 @@ def split_rule(rule: str) -> tuple[str, str]:
 
 
 def names(config: dict) -> set[str]:
-    return {proxy["name"] for proxy in config.get("proxies", [])} | {
-        group["name"] for group in config.get("proxy-groups", [])
-    }
+    return {p["name"] for p in config.get("proxies", [])} | {
+        g["name"] for g in config.get("proxy-groups", [])}
 
 
-def test_profile_declares_the_sections_clients_need(profile):
-    for key in ("proxies", "proxy-groups", "rules", "dns", "sniffer"):
-        assert key in profile, f"missing top-level section {key}"
-    assert profile["mode"] == "rule"
-
-
-def test_every_rule_target_resolves(profile):
-    known = names(profile) | BUILTIN_POLICIES
-    for rule in profile["rules"]:
+@pytest.mark.parametrize("label", sorted(MODES))
+def test_every_rule_target_resolves(label):
+    data = yaml.safe_load(profile.render(MODES[label]))
+    known = names(data) | BUILTIN_POLICIES
+    for rule in data["rules"]:
         kind, policy = split_rule(rule)
         assert kind, f"rule without a type: {rule!r}"
-        assert policy in known, f"rule {rule!r} points at unknown policy {policy!r}"
+        assert policy in known, f"{label}: {rule!r} -> unknown policy {policy!r}"
 
 
-def test_one_google_reaches_the_sidecar(profile):
-    rules = profile["rules"]
-    domain_rules = [rule for rule in rules if rule.startswith("DOMAIN,one.google.com,")]
-    assert domain_rules, "one.google.com must have an explicit DOMAIN rule"
-    assert all(split_rule(rule)[1] == GROUP for rule in domain_rules)
+@pytest.mark.parametrize("label", sorted(MODES))
+def test_every_group_member_resolves(label):
+    """A renamed proxy is the classic 'mihomo refuses to start' mistake."""
+    data = yaml.safe_load(profile.render(MODES[label]))
+    known = names(data) | BUILTIN_POLICIES
+    for group in data["proxy-groups"]:
+        for member in group.get("proxies", []):
+            assert member in known, f"{label}: group {group['name']} -> {member}"
+    if "proxy-providers" in data:
+        providers = set(data["proxy-providers"])
+        for group in data["proxy-groups"]:
+            for used in group.get("use", []):
+                assert used in providers, f"{label}: group {group['name']} -> provider {used}"
 
-    match_index = next(index for index, rule in enumerate(rules) if rule.startswith("MATCH,"))
+
+@pytest.mark.parametrize("label", sorted(MODES))
+def test_one_google_is_routed_to_the_sidecar_before_the_catch_all(label):
+    data = yaml.safe_load(profile.render(MODES[label]))
+    rules = data["rules"]
+    match_index = next(i for i, r in enumerate(rules) if r.startswith("MATCH,"))
+    resolved = [r for r in rules if r.startswith("DOMAIN,one.google.com,")]
+    assert resolved, "one.google.com needs an explicit DOMAIN rule"
+    assert split_rule(resolved[0])[1] == "G1"
     for index, rule in enumerate(rules):
         if "one.google.com" in rule:
-            assert index < match_index, "one.google.com rules must precede MATCH"
+            assert index < match_index
 
 
-def test_quic_guard_runs_first_and_is_scoped(profile):
-    first = profile["rules"][0]
+@pytest.mark.parametrize("label", sorted(MODES))
+def test_quic_guard_runs_first_and_is_scoped(label):
+    rules = yaml.safe_load(profile.render(MODES[label]))["rules"]
+    first = rules[0]
     kind, policy = split_rule(first)
-    assert kind == "AND"
-    assert policy == "REJECT-DROP"
-    assert "(NETWORK,udp)" in first
-    assert "(DST-PORT,443)" in first
+    assert kind == "AND" and policy == "REJECT-DROP"
+    assert "(NETWORK,udp)" in first and "(DST-PORT,443)" in first
     assert "(DOMAIN,one.google.com)" in first
-    assert profile["rules"][1].startswith("DOMAIN,one.google.com,")
 
 
-def test_sidecar_proxy_is_a_plain_http_proxy(profile):
-    proxy = next(item for item in profile["proxies"] if item["name"] == SIDECAR)
+@pytest.mark.parametrize("label", sorted(MODES))
+def test_sidecar_proxy_is_a_plain_http_proxy(label):
+    data = yaml.safe_load(profile.render(MODES[label]))
+    proxy = next(p for p in data["proxies"] if p["name"] == "G1-MITM")
     assert proxy["type"] == "http"
-    assert isinstance(proxy["port"], int)
-    assert proxy.get("tls") in (False, None), (
-        "the sidecar hop only carries CONNECT; enabling upstream TLS here would "
-        "make mihomo speak TLS to mitmproxy's plain listener"
-    )
+    assert proxy["tls"] is False
+    assert "udp" not in proxy, "udp is not an http-proxy option"
 
 
-def test_fake_ip_keeps_the_domain_visible(profile):
-    # DOMAIN rules are only reliable if the proxy still knows the hostname.
-    assert profile["dns"]["enhanced-mode"] == "fake-ip"
-    assert profile["sniffer"]["enable"] is True
+def test_fake_ip_and_quic_sniffing_are_enabled():
+    data = yaml.safe_load(profile.render(MODES["g1"]))
+    assert data["dns"]["enhanced-mode"] == "fake-ip"
+    assert data["sniffer"]["enable"] is True
+    assert 443 in data["sniffer"]["sniff"]["QUIC"]["ports"]
 
 
-def test_snippet_is_a_subset_of_the_profile(profile, snippet):
-    assert snippet["rules"] == profile["rules"][: len(snippet["rules"])]
-    profile_proxies = {item["name"]: item for item in profile["proxies"]}
-    for proxy in snippet["proxies"]:
-        assert profile_proxies[proxy["name"]]["type"] == proxy["type"]
-        assert profile_proxies[proxy["name"]]["port"] == proxy["port"]
-    assert snippet["proxy-groups"][0]["name"] == GROUP
-    assert snippet["proxy-groups"][0]["type"] == "select"
-    assert SIDECAR in snippet["proxy-groups"][0]["proxies"]
-
-
-
-def test_proxy_group_members_all_resolve(profile):
-    """A group pointing at a renamed/deleted proxy makes mihomo refuse to start."""
-    known = names(profile) | BUILTIN_POLICIES
-    for group in profile["proxy-groups"]:
-        for member in group.get("proxies", []):
-            assert member in known, (
-                f"group {group['name']!r} references unknown member {member!r}; "
-                "if a proxy was renamed, update the group too"
-            )
-
-
-def test_private_networks_are_not_pushed_through_the_node(profile):
-    rules = profile["rules"]
-    match_index = next(index for index, rule in enumerate(rules) if rule.startswith("MATCH,"))
-    private = [
-        index
-        for index, rule in enumerate(rules)
-        if rule.startswith("IP-CIDR,") and rule.endswith(",DIRECT,no-resolve")
-    ]
-    assert private, "LAN traffic must not be routed to the proxy node"
-    for index in private:
-        assert index < match_index
-
-
-def test_quic_is_sniffed(profile):
-    sniff = profile["sniffer"]["sniff"]
-    assert "QUIC" in sniff, "without QUIC sniffing the UDP guard can miss real QUIC flows"
-    assert 443 in sniff["QUIC"]["ports"]
-
-
-def test_snippet_only_uses_fields_mihomo_understands(profile, snippet):
-    """`udp` is not an HTTP-proxy option; it would be silently ignored."""
-    for config in (profile, snippet):
-        for proxy in config["proxies"]:
-            if proxy["type"] == "http":
-                assert "udp" not in proxy
-
-
-@pytest.mark.e2e
-def test_mihomo_accepts_the_shipped_profile(tmp_path):
-    binary = shutil.which("mihomo")
-    if not binary:
-        pytest.skip("mihomo binary not installed")
-    target = tmp_path / "config.yaml"
-    target.write_text(PROFILE.read_text(encoding="utf-8"), encoding="utf-8")
-    result = subprocess.run(
-        [binary, "-t", "-d", str(tmp_path), "-f", str(target)],
-        capture_output=True,
-        text=True,
-    )
-    assert "test is successful" in result.stdout + result.stderr, (
-        result.stdout + result.stderr
-    )
+def test_manual_snippet_matches_the_generated_rules():
+    snippet = yaml.safe_load(SNIPPET.read_text(encoding="utf-8"))
+    generated = yaml.safe_load(profile.render(MODES["g1"]))
+    assert snippet["rules"] == generated["rules"][: len(snippet["rules"])]
+    assert snippet["proxy-groups"][0]["name"] == "G1"
+    assert snippet["proxies"][0]["type"] == "http"

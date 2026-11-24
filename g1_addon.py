@@ -1,4 +1,4 @@
-"""mitmproxy addon: the network edge of G1 ACQ.
+r"""mitmproxy addon: the network edge of G1 ACQ.
 
 Run it behind mihomo (Clash).  Prefer the launcher, which sets every flag:
 
@@ -30,6 +30,7 @@ from mitmproxy import ctx, http  # noqa: E402
 
 from g1acq import config  # noqa: E402
 from g1acq.app import G1App  # noqa: E402
+from g1acq.setup_console import SetupConsole  # noqa: E402
 from g1acq.store import FileStore  # noqa: E402
 
 DEFAULT_STATE = "~/.g1-acq/state.json"
@@ -70,6 +71,19 @@ def _info(message: str) -> None:
         log.info(message)
 
 
+def _warn(message: str) -> None:
+    """Recoverable problem.
+
+    mitmproxy aborts startup on any ``error``-level log, so anything that
+    happens while starting (a busy console port, a bad option) must use this.
+    """
+    log = getattr(ctx, "log", None)
+    if log is None:
+        logging.getLogger("g1-acq").warning(message)
+    else:
+        log.warn(message)
+
+
 def _error(message: str) -> None:
     log = getattr(ctx, "log", None)
     if log is None:
@@ -82,6 +96,7 @@ class G1Addon:
     def __init__(self) -> None:
         self.app: G1App | None = None
         self.settings = config.SETTINGS
+        self.console: SetupConsole | None = None
         self._logger = logging.getLogger("g1-acq")
 
     # -- mitmproxy lifecycle --------------------------------------------
@@ -104,6 +119,12 @@ class G1Addon:
             default=0,
             help="Skip response bodies larger than this many bytes (0 = no limit).",
         )
+        loader.add_option(
+            name="g1_console",
+            typespec=int,
+            default=8090,
+            help="Port of the setup console (0 disables it).",
+        )
 
     def configure(self, updated) -> None:
         if not {"g1_state", "g1_target", "g1_max_body"} & set(updated):
@@ -116,8 +137,32 @@ class G1Addon:
             f"[g1-acq] {config.PROJECT_VERSION} ready: target={self.settings.target}"
             f" state={self._state_path()}"
         )
+        self._start_console()
+
+    def _start_console(self) -> None:
+        port = int(ctx.options.g1_console or 0)
+        if not port or self.app is None:
+            return
+        if self.console is not None:
+            self.console.stop()
+        console = SetupConsole(
+            self.app.store,
+            port=port,
+            sidecar_port=int(ctx.options.listen_port or 8080),
+            confdir=ctx.options.confdir,
+            emit=_info,
+        )
+        try:
+            console.start()
+        except OSError as error:
+            _warn(f"[g1-acq] 安装控制台未启动（端口 {port} 被占用）: {error}")
+            return
+        self.console = console
 
     def done(self) -> None:
+        if self.console is not None:
+            self.console.stop()
+            self.console = None
         self.app = None
 
     # -- helpers ---------------------------------------------------------
@@ -132,7 +177,7 @@ class G1Addon:
                 target=target, max_body_bytes=int(ctx.options.g1_max_body or 0)
             )
         except ValueError as error:
-            _error(f"[g1-acq] invalid option, using defaults: {error}")
+            _warn(f"[g1-acq] invalid option, using defaults: {error}")
             self.settings = config.SETTINGS
         if self.app is not None and not force:
             self.app.settings = self.settings

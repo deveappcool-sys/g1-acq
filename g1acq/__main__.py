@@ -45,6 +45,7 @@ def _serve(args: argparse.Namespace) -> int:
         upstream=args.upstream,
         bind=args.bind,
         auth=auth,
+        console=args.console,
     )
     mitmdump = shutil.which("mitmdump")
     if mitmdump is None:
@@ -91,6 +92,12 @@ def _parser() -> argparse.ArgumentParser:
     serve = sub.add_parser("serve", help="run the mitmproxy sidecar")
     serve.add_argument("--port", type=int, default=launch.DEFAULT_PORT)
     serve.add_argument("--bind", default="", help="listen address (default: all)")
+    serve.add_argument(
+        "--console",
+        type=int,
+        default=launch.DEFAULT_CONSOLE_PORT,
+        help=f"setup console port, 0 disables it (default: {launch.DEFAULT_CONSOLE_PORT})",
+    )
     serve.add_argument(
         "--auth",
         default="",

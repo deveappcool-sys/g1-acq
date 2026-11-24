@@ -1,0 +1,62 @@
+# =============================================================================
+# G1 ACQ · 由安装控制台自动生成的 Clash / mihomo 配置
+#
+# 生成时间：{{GENERATED}}
+# 旁路地址：{{SERVER}}:{{PORT}}
+# 模式：{{MODE_LABEL}}
+#
+# 这份文件不需要手改：IP 和端口已经填好。换网络导致 IP 变化时，
+# 回到安装控制台重新生成一次即可。
+# =============================================================================
+
+mixed-port: {{MIXED_PORT}}
+allow-lan: false
+mode: rule
+log-level: info
+ipv6: false
+unified-delay: true
+tcp-concurrent: true
+
+profile:
+  store-selected: true
+  store-fake-ip: true
+
+dns:
+  enable: true
+  ipv6: false
+  # fake-ip 让规则引擎始终知道域名，DOMAIN 规则才可靠
+  enhanced-mode: fake-ip
+  fake-ip-range: 198.18.0.1/16
+  fake-ip-filter:
+    - "*.lan"
+    - "*.local"
+  default-nameserver:
+    - 223.5.5.5
+    - 119.29.29.29
+  nameserver:
+    - https://dns.alidns.com/dns-query
+    - https://doh.pub/dns-query
+  proxy-server-nameserver:
+    - https://dns.alidns.com/dns-query
+
+sniffer:
+  enable: true
+  sniff:
+    TLS:
+      ports: [443, 8443]
+    HTTP:
+      ports: [80, 8080-8880]
+    QUIC:
+      ports: [443, 8443]
+  force-domain:
+    - "one.google.com"
+
+{{PROVIDERS}}
+proxies:
+{{PROXIES}}
+
+proxy-groups:
+{{GROUPS}}
+
+rules:
+{{RULES}}

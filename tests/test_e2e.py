@@ -15,7 +15,6 @@ from pathlib import Path
 import pytest
 from e2e_support import (
     REWRITTEN_SKUS,
-    ROOT,
     ConnectForwarder,
     FakeGoogle,
     Process,
@@ -28,7 +27,7 @@ from e2e_support import (
     openssl_available,
 )
 
-from g1acq import launch
+from g1acq import launch, profile
 
 pytestmark = pytest.mark.e2e
 
@@ -43,20 +42,20 @@ needs_mihomo = pytest.mark.skipif(
 )
 
 
-def _mihomo_profile(directory: Path, sidecar_port: int, mixed_port: int, *, tcp_probe: bool = False) -> Path:
-    config = yaml.safe_load((ROOT / "clash" / "g1-acq.yaml").read_text(encoding="utf-8"))
-    config["mixed-port"] = mixed_port
-    config["allow-lan"] = False
-    for proxy in config["proxies"]:
-        if proxy["name"] == "G1-MITM":
-            proxy["server"] = "127.0.0.1"
-            proxy["port"] = sidecar_port
+def _mihomo_profile(directory: Path, sidecar_port: int, mixed_port: int, *,
+                    tcp_probe: bool = False) -> Path:
+    """Render the same profile the console hands to users, pointed at the test sidecar."""
+    text = profile.render(
+        profile.ProfileOptions(
+            server="127.0.0.1", port=sidecar_port, mixed_port=mixed_port
+        )
+    )
     if tcp_probe:
         # Same three conditions, but on TCP: mirrors the QUIC guard so the
         # matcher can be observed without crafting UDP traffic.
-        config["rules"][0] = config["rules"][0].replace("(NETWORK,udp)", "(NETWORK,tcp)")
+        text = text.replace("(NETWORK,udp)", "(NETWORK,tcp)")
     path = directory / ("probe.yaml" if tcp_probe else "config.yaml")
-    path.write_text(yaml.safe_dump(config, sort_keys=False, allow_unicode=True), encoding="utf-8")
+    path.write_text(text, encoding="utf-8")
     return path
 
 

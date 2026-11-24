@@ -1,3 +1,5 @@
 # Runtime dependency of the sidecar. The rewrite itself is pure standard
 # library; mitmproxy provides the TLS interception and HTTP/2 handling.
 mitmproxy>=12,<13
+# tiny pure-Python QR codes for the setup console
+segno>=1.5
