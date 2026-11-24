@@ -314,3 +314,162 @@ def test_unreadable_state_file_is_reported_as_unavailable(tmp_path):
     data = json.loads(response.body)
     assert data["storageAvailable"] is False
     assert data["scan"]["skus"] == []
+
+
+def test_stored_counts_follow_javascript_number_coercion():
+    """`Number()` accepts hex and single-element arrays, rejects underscores."""
+    h = Harness(
+        {
+            SCAN_KEY: json.dumps(
+                {
+                    "schemaVersion": 1,
+                    "scannedResponses": "0x2",
+                    "skus": [
+                        {"id": "g1.hex", "count": "0x10"},
+                        {"id": "g1.us", "count": "1_0"},
+                        {"id": "g1.arr", "count": [5]},
+                        {"id": "g1.full", "count": "１２３"},
+                        {"id": "g1.plain", "count": "2.9"},
+                    ],
+                }
+            )
+        }
+    )
+    data = _json(h)
+    counts = {row["id"]: row["count"] for row in data["scan"]["skus"]}
+    assert counts == {
+        "g1.hex": 16,
+        "g1.us": 0,
+        "g1.arr": 5,
+        "g1.full": 0,
+        "g1.plain": 2,
+    }
+    assert data["scan"]["scannedResponses"] == 2
+
+
+def test_huge_integers_do_not_break_the_report_or_collection():
+    huge = 10**400
+    h = Harness(
+        {
+            SCAN_KEY: json.dumps({"schemaVersion": 1, "scannedResponses": huge}),
+            TEST_KEY: json.dumps(
+                {
+                    "schemaVersion": 1,
+                    "version": config.COLLECTOR_VERSION,
+                    "annualHitCount": huge,
+                    "matchedFrom": [{"id": SOURCE, "count": 1}],
+                }
+            ),
+        }
+    )
+    data = _json(h)
+    assert data["scan"]["scannedResponses"] == 0
+    assert data["test"]["annualHitCount"] == 0
+    # Collection must still complete on the same file.
+    assert h.response(SOURCE, "https://one.google.com/plans") == {}
+    assert h.get(SCAN_KEY)["scannedResponses"] == 1
+
+
+def test_report_drops_events_with_non_string_status():
+    event = {
+        "at": "2026-11-23T07:40:06.325Z",
+        "path": "/ai",
+        "bodyType": "text",
+        "candidateCount": 0,
+        "addedCount": 0,
+        "omittedCount": 0,
+    }
+    h = Harness(
+        {
+            SCAN_KEY: json.dumps(
+                {
+                    "schemaVersion": 1,
+                    "recentResponses": [
+                        {**event, "status": []},
+                        {**event, "status": {"a": 1}},
+                        {**event, "status": "known-skus"},
+                    ],
+                }
+            )
+        }
+    )
+    events = _json(h)["scan"]["recentResponses"]
+    assert [event["status"] for event in events] == ["known-skus"]
+
+
+@pytest.mark.parametrize(
+    "at",
+    [
+        "2026-11-23T07:40:06.325Z\n",
+        "٢٠٢٦-11-23T07:40:06.325Z",
+        "２０２６-11-23T07:40:06.325Z",
+    ],
+)
+def test_report_rejects_non_ascii_and_newline_timestamps(at):
+    h = Harness(
+        {
+            SCAN_KEY: json.dumps(
+                {
+                    "schemaVersion": 1,
+                    "recentResponses": [
+                        {
+                            "at": at,
+                            "path": "/ai",
+                            "bodyType": "text",
+                            "status": "known-skus",
+                            "candidateCount": 1,
+                            "addedCount": 0,
+                            "omittedCount": 0,
+                        }
+                    ],
+                }
+            )
+        }
+    )
+    assert _json(h)["scan"]["recentResponses"] == []
+
+
+@pytest.mark.parametrize("url", [REPORT + "\n", REPORT + "/\n"])
+def test_report_url_needs_an_exact_match(url):
+    """A trailing newline must not be treated as the report path."""
+    h = Harness({SCAN_KEY: json.dumps({"schemaVersion": 1, "skus": [{"id": SOURCE, "count": 1}]})})
+    assert h.report(url) == {}
+
+
+@pytest.mark.parametrize("url", [REPORT + "?clear=1\n", REPORT + "?format=json\n"])
+def test_report_query_flags_need_the_end_of_the_url(url):
+    """`?clear=1` and `?format=json` must not fire before a trailing newline."""
+    h = Harness({SCAN_KEY: json.dumps({"schemaVersion": 1, "skus": [{"id": SOURCE, "count": 1}], "scannedResponses": 3})})
+    payload = h.report(url)
+    assert payload, "the report path itself still matches"
+    headers = payload["response"]["headers"]
+    assert headers["Content-Type"] == "text/html; charset=utf-8"
+    assert "Content-Disposition" not in headers
+    assert h.get(SCAN_KEY)["scannedResponses"] == 3, "clear must not have run"
+
+
+def test_schema_version_accepts_float_but_rejects_nan_json():
+    numeric = Harness({SCAN_KEY: json.dumps({"schemaVersion": 1.0, "scannedResponses": 7})})
+    assert _json(numeric)["scan"]["scannedResponses"] == 7
+
+    corrupt = Harness(
+        {
+            SCAN_KEY: '{"schemaVersion":1,"scannedResponses":5,'
+            '"skus":[{"id":"g1.a","count":2}],"recentResponses":[{"at":NaN}]}'
+        }
+    )
+    data = _json(corrupt)
+    assert data["scan"]["scannedResponses"] == 0
+    assert data["scan"]["skus"] == []
+
+
+def test_custom_target_still_infers_the_builtin_origin():
+    record = {
+        "schemaVersion": 1,
+        "version": config.COLLECTOR_VERSION,
+        "target": TARGET,
+        "hitCount": 1,
+        "matchedFrom": [{"id": SOURCE, "count": 1}],
+    }
+    h = Harness({TEST_KEY: json.dumps(record)}, settings=config.Settings(target="g1.custom.target"))
+    assert _json(h)["test"]["targetOrigin"] == "user-specified"

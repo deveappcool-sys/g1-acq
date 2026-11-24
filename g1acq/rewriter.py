@@ -119,7 +119,8 @@ def save_record(store: Store, record: dict, *, emit: Emit | None = None) -> bool
             )
         )
     except Exception:
-        stored = False
+        emit("[g1-acq] local record unavailable")
+        return False
     if not stored:
         emit("[g1-acq] local record write failed")
     return stored

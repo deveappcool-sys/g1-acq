@@ -22,6 +22,8 @@ SKU_RE = re.compile(r"^g1\.[A-Za-z0-9._-]{1,160}$")
 ID_RE = re.compile(r"^(?:g1\.|com\.google\.one\.)[A-Za-z0-9._-]{1,160}$")
 # Versions whose 2TB records predate the ``target`` field.
 LEGACY_VERSION_RE = re.compile(r"^(?:pro-annual-test-v[12]|g1-acq-v7(?:\.0|\.1)?)$")
+# Same shape the collector writes; [0-9] because JavaScript's \d is ASCII-only.
+_AT_RE = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]{1,3})?Z")
 
 SCAN_STATUSES = {
     "new-skus": "发现并录入新编号",
@@ -87,13 +89,13 @@ def _recent(value: Any) -> list[dict]:
             continue
         at = event.get("at")
         body_type = event.get("bodyType")
-        if not isinstance(at, str) or not re.match(
-            r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$", at
-        ):
+        status = event.get("status")
+        if not isinstance(at, str) or not _AT_RE.fullmatch(at):
             continue
         if body_type not in ("text", "non-text"):
             continue
-        if event.get("status") not in SCAN_STATUSES:
+        # A stored status may be any JSON type; only a known string counts.
+        if not isinstance(status, str) or status not in SCAN_STATUSES:
             continue
         path = event.get("path")
         out.append(
@@ -101,7 +103,7 @@ def _recent(value: Any) -> list[dict]:
                 "at": at,
                 "path": path if path in ROUTES else "[其他 one.google.com 路径]",
                 "bodyType": body_type,
-                "status": event["status"],
+                "status": status,
                 "candidateCount": prior_count(event.get("candidateCount")),
                 "addedCount": prior_count(event.get("addedCount")),
                 "omittedCount": prior_count(event.get("omittedCount")),
@@ -237,7 +239,8 @@ def build_report(
     stored_origin = _text(test_raw.get("targetOrigin"), 32)
     if recorded_target and stored_origin in ("user-specified", "pattern-derived", "legacy"):
         target_origin = stored_origin
-    elif recorded_target == settings.target:
+    elif recorded_target in (settings.target, config.DEFAULT_TARGET):
+        # Records written before --target existed still carry the built-in one.
         target_origin = config.TARGET_ORIGIN
     elif recorded_target == config.LEGACY_TARGET:
         target_origin = "legacy"

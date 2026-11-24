@@ -213,7 +213,7 @@ uv pip install --python .venv/bin/python pytest pyyaml
 
 用 `python3 -m venv .venv` 建的虚拟环境自带 pip，把第一行换成 `.venv/bin/pip install pytest pyyaml` 即可。
 
-86 个测试分四层：
+100 个测试分四层：
 
 | 层 | 内容 |
 |---|---|
@@ -258,7 +258,7 @@ uv pip install --python .venv/bin/python pytest pyyaml
 
 已在本机完成（macOS，mitmproxy 12.3.1，mihomo 1.19.34）：
 
-- 86 个测试全部通过，含 `客户端 → mihomo → 旁路 → 假 Google` 的真实进程链路；
+- 100 个测试全部通过，含 `客户端 → mihomo → 旁路 → 假 Google` 的真实进程链路；
 - 用真实 `mihomo -t` 解析本仓库的配置，规则出口、逻辑规则子项都能解析；
 - 移植时把 v7.5 的原始 JS 脚本和新的 Python 实现放在同一批输入上做差分比对：417 个改写/采集用例（含非文本、损坏存储、异常字段类型、300 上限）与 108 次报告渲染（含 `?clear=1` 的写入结果），除版本号与时间戳外**输出完全一致**；
 - 用真实 `mitmdump` 对 **`one.google.com` 真实站点**做了一次 HTTPS 拦截与透传：页面 368 KB、标题与内容完整无损坏，报告页与日志正常，采集按预期记为 `no-skus`；

@@ -25,14 +25,18 @@ VALID_ID_RE = re.compile(r"^(?:g1\.|com\.google\.one\.)[A-Za-z0-9._-]{1,160}$")
 
 # Dots are frequently escaped in the serialised payload; decode a discovery
 # copy only, never the response itself.
-ESCAPED_DOT_RE = re.compile(r"\\u002e|\\x2e|&#0*46;|&#x0*2e;|&period;", re.IGNORECASE)
+# re.ASCII keeps the case folding to ASCII, like JavaScript's /i flag.
+ESCAPED_DOT_RE = re.compile(
+    r"\\u002e|\\x2e|&#0*46;|&#x0*2e;|&period;", re.IGNORECASE | re.ASCII
+)
 
 TOKEN_RE = re.compile(
     r"(^|[^A-Za-z0-9._@%-])((?:g1\.|com\.google\.one\.)[A-Za-z0-9._-]+)"
     r"(?=$|[^A-Za-z0-9._-])"
 )
 
-_AT_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$")
+# Explicit [0-9]: Python's \d also matches non-ASCII digits, JavaScript's does not.
+_AT_RE = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{3}Z")
 
 
 def format_iso(moment: datetime) -> str:
@@ -62,26 +66,73 @@ def parse_iso(value: Any) -> datetime | None:
     return parsed if format_iso(parsed) == value else None
 
 
+_HEX_RE = re.compile(r"0[xX][0-9a-fA-F]+")
+_BIN_RE = re.compile(r"0[bB][01]+")
+_OCT_RE = re.compile(r"0[oO][0-7]+")
+_DEC_RE = re.compile(r"[+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+-]?[0-9]+)?")
+_JS_SPACE = " \t\n\r\v\f\u00a0\ufeff"
+
+
+def js_number(value: Any) -> float:
+    """Approximate ``Number(value)`` for the values a JSON record can hold.
+
+    The differences matter for hand-edited or migrated state files: Python's
+    ``float()`` accepts ``"1_0"`` and non-ASCII digits and rejects ``"0x10"``,
+    while JavaScript does the opposite.  Anything unparseable becomes NaN,
+    which the callers turn into 0.
+    """
+    if isinstance(value, bool):
+        return 1.0 if value else 0.0
+    if isinstance(value, float):
+        return value
+    if isinstance(value, int):
+        try:
+            return float(value)
+        except OverflowError:
+            return math.nan
+    if isinstance(value, str):
+        text = value.strip(_JS_SPACE)
+        if not text:
+            return 0.0
+        if _HEX_RE.fullmatch(text):
+            return float(int(text, 16))
+        if _BIN_RE.fullmatch(text):
+            return float(int(text[2:], 2))
+        if _OCT_RE.fullmatch(text):
+            return float(int(text[2:], 8))
+        if "_" in text or not _DEC_RE.fullmatch(text):
+            return math.nan
+        return float(text)
+    if isinstance(value, (list, tuple)):
+        # JavaScript turns an array into "a,b" and then to a number.
+        parts = []
+        for item in value:
+            if item is None:
+                parts.append("")
+            elif isinstance(item, bool):
+                parts.append("true" if item else "false")
+            else:
+                parts.append(str(item))
+        return js_number(",".join(parts))
+    return math.nan
+
+
 def prior_count(value: Any) -> int:
     """``Number(value)`` floored, non-positive and non-finite mapped to 0."""
-    if isinstance(value, bool):
-        number = 1.0 if value else 0.0
-    else:
-        try:
-            number = float(value)
-        except (TypeError, ValueError):
-            return 0
+    number = js_number(value)
     if not math.isfinite(number) or number <= 0:
         return 0
     return math.floor(number)
 
 
 def _counter(value: Any, maximum: int) -> int | None:
+    # typeof value === "number" only: strings are not coerced here.
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         return None
-    if not math.isfinite(value):
+    number = js_number(value)
+    if not math.isfinite(number):
         return None
-    return max(0, min(maximum, math.floor(value)))
+    return max(0, min(maximum, math.floor(number)))
 
 
 def response_status(
@@ -270,6 +321,7 @@ def collect(
 __all__ = [
     "CollectionResult",
     "collect",
+    "js_number",
     "format_iso",
     "now_iso",
     "parse_iso",

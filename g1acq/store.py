@@ -105,17 +105,23 @@ class FileStore:
             return self._save(data)
 
 
+def _reject_constant(name: str):
+    # JSON.parse refuses NaN/Infinity, so a record containing them is corrupt.
+    raise ValueError(f"non-standard JSON constant: {name}")
+
+
 def load_json(store: Store, key: str) -> dict:
     """Read ``key`` and return the parsed object when it matches the schema."""
     try:
         value = store.read(key)
-        parsed = json.loads(value or "{}")
+        parsed = json.loads(value or "{}", parse_constant=_reject_constant)
     except Exception:
         return {}
     if not isinstance(parsed, dict):
         return {}
     schema = parsed.get("schemaVersion")
-    # ``true`` and ``"1"`` must not pass, exactly as the original strict check.
-    if isinstance(schema, bool) or not isinstance(schema, int) or schema != 1:
+    # ``true`` and ``"1"`` must not pass, exactly as the original strict check;
+    # ``1.0`` must, because JavaScript's 1.0 === 1.
+    if isinstance(schema, bool) or not isinstance(schema, (int, float)) or schema != 1:
         return {}
     return parsed

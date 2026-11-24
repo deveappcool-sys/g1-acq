@@ -13,12 +13,12 @@ import re
 ONE_GOOGLE_RE = re.compile(r"^https://one\.google\.com/")
 
 # The local report, including a trailing slash and any query string.
-REPORT_RE = re.compile(r"^https://one\.google\.com/g1-sku-report/?(?:\?|$)")
+REPORT_RE = re.compile(r"^https://one\.google\.com/g1-sku-report/?(?:\?|\Z)")
 
 # Only /ai? responses are rewritten.
 AI_RE = re.compile(r"^https://one\.google\.com/ai\?")
 
-_BATCHEXECUTE_RE = re.compile(r"^/_/[^?#]+/data/batchexecute$")
+_BATCHEXECUTE_RE = re.compile(r"^/_/[^?#]+/data/batchexecute\Z")
 
 ROUTE_HOME = "/"
 ROUTE_AI = "/ai"
@@ -34,8 +34,10 @@ ROUTES = (
     ROUTE_OTHER,
 )
 
-_JSON_RE = re.compile(r"(?:\?|&)format=json(?:&|$)")
-_CLEAR_RE = re.compile(r"(?:\?|&)clear=1(?:&|$)")
+# NOTE: anchors use \Z, not $ -- Python's $ also matches before a trailing
+# newline, which would make "?clear=1\n" wipe the records.
+_JSON_RE = re.compile(r"(?:\?|&)format=json(?:&|\Z)")
+_CLEAR_RE = re.compile(r"(?:\?|&)clear=1(?:&|\Z)")
 
 
 def is_one_google(url: str) -> bool:

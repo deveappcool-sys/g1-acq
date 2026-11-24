@@ -206,3 +206,21 @@ def test_trailing_newline_ids_are_rejected_on_reload():
     ids = [row["id"] for row in h.get(SCAN_KEY)["skus"]]
     assert ids == [SOURCE]
     assert h.get(SCAN_KEY)["skus"][0]["count"] == 1
+
+
+def test_escaped_dot_decoding_is_ascii_case_insensitive():
+    """JavaScript's /i flag does not fold the dotless i."""
+    from g1acq.collector import ESCAPED_DOT_RE
+
+    assert ESCAPED_DOT_RE.sub(".", "g1&PERIOD;x") == "g1.x"
+    assert ESCAPED_DOT_RE.sub(".", "g1&perıod;x") == "g1&perıod;x"
+
+
+def test_store_failure_logs_match_the_original_wording():
+    raising = Harness(storage_throws=True)
+    raising.response(SOURCE)
+    assert "[g1-acq] local record unavailable" in raising.logs
+
+    refusing = Harness(storage_write_fails=True)
+    refusing.response(SOURCE)
+    assert "[g1-acq] local record write failed" in refusing.logs
