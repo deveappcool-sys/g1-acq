@@ -195,12 +195,17 @@ def _url(args: argparse.Namespace) -> int:
     if not address:
         print("没检测到局域网地址：这台机器现在没有连上任何网络？", file=sys.stderr)
         return 2
-    url = f"http://{address}:{args.console_port}/"
-    print(url)
+    console = f"http://{address}:{args.console_port}/"
+    clash = f"{console}clash.yaml?mode=g1"
+    print("手机先打开这个（装证书 + 导配置）：")
+    print(f"  {console}")
+    print("Clash 也可以直接用「从 URL 导入」这个地址：")
+    print(f"  {clash}")
+    print()
     try:
         import segno
 
-        segno.make(url, error="m").terminal(compact=True)
+        segno.make(console, error="m").terminal(compact=True)
     except Exception:  # QR is a convenience, never a requirement
         pass
     return 0
