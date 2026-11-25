@@ -4,7 +4,7 @@
 
 > ⚠️ **仅供研究与兼容性测试。** 改写商品编号来观察商店行为可能违反 Google / Apple 的服务条款。请把这一轮当作只读观察：**看到收银台就记录，不要真正完成付款**，也不要用于获取未付费权益。
 
-当前版本：项目 `8.1.0`，报告 `v8.1.0`，采集/改写脚本 `g1-acq-clash-v8.0`。
+当前版本：项目 `8.2.0`，报告 `v8.2.0`，采集/改写脚本 `g1-acq-clash-v8.2`；映射表与上游 v7.6.0 同步。
 
 ---
 
@@ -32,15 +32,15 @@
    │
    └─ 仅当 URL 匹配 ^https://one.google.com/ai\? 时改写：
         g1.ios.2tb.*            → g1.2tb.ai.12months_ip_90p（固定）
-        g1.ios.20tb.m.v2        → g1.20tb.3months_ip_90p.acq   ┐ 按原文判断
-        g1.ios.30tb.ai.pro.m    → g1.ai.ultra.3months_ip_90p.acq ┘
+        g1.ios.20tb.m.v2        → g1.20tb.1month_eft.acq        ┐ 按原文判断
+        g1.ios.30tb.ai.pro.m    → g1.ai.ultra.1month_eft.acq    ┘
 ```
 
 20TB / 30TB 的备用档判断，**只看原始正文**：
 
-1. 该档 90p 目标出现在正文 → 用 90p。即使 75p 同时出现，仍然用 90p。
-2. 90p 缺席、对应 75p 出现 → 用 75p，该行记 `fallback=true`。
-3. 两者都没出现 → 仍用 90p。
+1. 该档 1 个月免费试用（`1month_eft`）出现在正文 → 用它。即使三个月 90p 同时出现，仍然用它。
+2. 免费试用缺席、对应三个月 90p 出现 → 用 90p，该行记 `fallback=true`。
+3. 两者都没出现 → 仍用 `1month_eft`。
 
 20TB 只看 20TB 的目标，30TB 只看 30TB 的目标，互不影响。
 
@@ -77,7 +77,7 @@
 
 | 字段 | 含义 |
 |---|---|
-| `reportVersion` | 报告渲染版本，当前 `v8.1.0` |
+| `reportVersion` | 报告渲染版本，当前 `v8.2.0` |
 | `configuredTarget` | 当前配置的 2TB 候选；用 `--target` 覆盖时会随之变化 |
 | `storageAvailable` | 状态文件是否可读 |
 | `schemaVersion` | 恒为 `1` |
@@ -142,8 +142,8 @@
 [g1-acq] g1.ios.2tb.monthly.v1 x2
 [g1-acq] g1-acq-clash-v8.0 hits=4 annualHits=2
 [g1-acq] g1.ios.2tb.monthly.v1 -> g1.2tb.ai.12months_ip_90p x2
-[g1-acq] g1.ios.30tb.ai.pro.m -> g1.ai.ultra.3months_ip_75p.acq x1 fallback=75p
-[g1-sku-report] v8.1.0 html storage=ready candidates=4
+[g1-acq] g1.ios.30tb.ai.pro.m -> g1.ai.ultra.3months_ip_90p.acq x1 fallback=g1.ai.ultra.3months_ip_90p.acq
+[g1-sku-report] v8.2.0 html storage=ready candidates=4
 ```
 
 | 标记 | 含义 |
@@ -152,7 +152,7 @@
 | `SKU collection unavailable` | 采集流程异常（存储不可用等） |
 | `hits=N annualHits=N` | 三档总改写数 / 其中 2TB |
 | `源 SKU -> 实际目标 xN` | 逐行目标与次数 |
-| `fallback=75p` | 该行使用了 75p 备用档 |
+| `fallback=<目标>` | 该行使用了备用档，后面跟的就是实际目标 |
 
 ---
 
@@ -171,7 +171,7 @@
 | 状态 `limit-reached` | 已满 300 上限；需要继续采集时先导出再 `?clear=1` |
 | `hits>0` 但 `annualHits=0` | 只命中 20TB / 30TB，看 `matchedFrom` 各行的 `id` / `to` |
 | `status=no-match`、`hitCount=0` | 三档都没命中，响应原样返回 |
-| 某行 `fallback=true` | 该档 90p 未出现在原文，用了对应的 75p |
+| 某行 `fallback=true` | 该档免费试用未出现在原文，用了对应的三个月 90p |
 | App Store 报错或没有商品 | 记录该档实际 `to` 与收银台提示；文本替换成功 ≠ 商品存在 |
 | 商品名称/周期/金额与预期不同 | 以 App Store 返回为准，候选名里的 `12months`、`90p` 不代表实际周期与价格 |
 
@@ -198,13 +198,13 @@ https://one.google.com/g1-sku-report?clear=1
 ```text
 采集 / 测试时间（含时区）：[填写]
 iOS / Google App / Clash 版本：[填写]
-旁路版本：8.1.0
+旁路版本：8.2.0
 旁路主机与地址：[填写 例如 192.168.1.10:8080]
 Clash 配置来源：[控制台生成（只做 G1 / 带订阅）/ 手动合并片段]
 G1 组当前选择：[G1-MITM / DIRECT]
 证书安装与完全信任：[是 / 否]
-报告页标记：[填写实际显示；应为 "G1 ACQ 旁路已接管 · v8.1.0"]
-reportVersion：[填写；当前 v8.1.0]
+报告页标记：[填写实际显示；应为 "G1 ACQ 旁路已接管 · v8.2.0"]
+reportVersion：[填写；当前 v8.2.0]
 scan.version：[填写实际保存值]
 打开方案前 scannedResponses / matchedResponses / nonTextResponses：[填写]
 打开方案后 scannedResponses / matchedResponses / nonTextResponses：[填写]

@@ -123,6 +123,21 @@ def _escape(value: Any) -> str:
     )
 
 
+_FALLBACK_DISCOUNT_RE = re.compile(r"_ip_(\d+p)\.acq$")
+
+
+def _fallback_name(row: dict) -> str:
+    """Show which fallback tier was used, derived from its actual target.
+
+    The fallback used to be a fixed 75p tier; since v7.6.0 it is the three-month
+    90p offer, so the cell reads the row's own target instead of assuming.
+    """
+    if not row["fallback"]:
+        return "否"
+    match = _FALLBACK_DISCOUNT_RE.search(row.get("to") or "")
+    return match.group(1) if match else "是"
+
+
 def _table(items: list[dict], with_time: bool) -> str:
     if not items:
         return "<p>暂无记录。</p>"
@@ -138,7 +153,7 @@ def _table(items: list[dict], with_time: bool) -> str:
         else:
             tail = (
                 f"<td><code>{_escape(row['to'] or '未记录')}</code></td>"
-                f"<td>{'75p' if row['fallback'] else '否'}</td>"
+                f"<td>{_fallback_name(row)}</td>"
             )
         cells.append(
             f"<tr><td><code>{_escape(row['id'])}</code></td>"
@@ -363,7 +378,8 @@ def _html(report: dict, clear_message: str, storage_available: bool, root: str) 
         f"总替换次数：{test['hitCount']}；其中 2TB：{test['annualHitCount']}</p>",
         f"<p>2TB 源前缀：<code>g1.ios.2tb.</code><br>"
         f"该次记录的 2TB 目标：<code>{_escape(test['target'] or '暂无记录')}</code><br>"
-        "20TB / 30TB 沿用旧优惠映射与 75p 回退；各档实际目标见下表。<br>"
+        "当前 20TB / 30TB 支持 Ultra 1个月免费试用（1month_eft），以三个月 90p 为备用；"
+        "下表保留该次记录的实际目标与备用档，历史 75p 记录按原样显示。<br>"
         f"执行时间（UTC）：{_escape(test['updatedAt'] or '暂无')}</p>",
         "<p class=note>这里记录的是脚本执行结果；商品是否被 App Store 识别、价格和周期"
         "需查看购买面板。</p>",

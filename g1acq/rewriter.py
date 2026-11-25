@@ -4,9 +4,10 @@ The mapping intentionally mirrors the shipped v7.5 behaviour:
 
 * every complete ``g1.ios.2tb.*`` token becomes the fixed 12-month candidate,
   which has no fallback;
-* ``g1.ios.20tb.m.v2`` and ``g1.ios.30tb.ai.pro.m`` map to their 90p offer and
-  fall back to the matching 75p offer only when the 90p string is absent from
-  the original response while the 75p string is present;
+* ``g1.ios.20tb.m.v2`` and ``g1.ios.30tb.ai.pro.m`` map to the one-month free
+  trial and fall back to the matching three-month 90p offer only when the free
+  trial string is absent from the original response while the 90p string is
+  present;
 * the decision is made on the original body, before any substitution.
 
 This is a string check against the response text, not a store catalog query.
@@ -133,7 +134,7 @@ def log_record(record: dict, *, emit: Emit | None = None) -> None:
         f" annualHits={record['annualHitCount']}"
     )
     for source in record["matchedFrom"]:
-        suffix = " fallback=75p" if source["fallback"] else ""
+        suffix = f" fallback={source['to']}" if source["fallback"] else ""
         emit(
             f"[g1-acq] {source['id']} -> {source['to']} x{source['count']}{suffix}"
         )

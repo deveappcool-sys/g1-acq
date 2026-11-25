@@ -5,7 +5,7 @@
 # mitmproxy addon entrypoint (g1_addon.py) lives at the repository root.
 [project]
 name = "g1-acq-clash"
-version = "8.1.0"
+version = "8.2.0"
 description = "Google One iOS SKU rewrite sidecar for Clash / mihomo"
 readme = "README.md"
 requires-python = ">=3.12"

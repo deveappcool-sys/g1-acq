@@ -23,6 +23,25 @@ def _free_port() -> int:
         return sock.getsockname()[1]
 
 
+def _start(console_factory, attempts: int = 8):
+    """Start a console on a free port.
+
+    The port from ``_free_port`` is only a hint: another test (or the running
+    sidecar in a developer's session) can grab it before we bind.  Retrying
+    keeps the suite deterministic instead of failing on a race.
+    """
+    last: OSError | None = None
+    for _ in range(attempts):
+        instance = console_factory(_free_port())
+        try:
+            instance.start()
+        except OSError as error:
+            last = error
+            continue
+        return instance
+    raise AssertionError(f"could not bind a console port: {last}")
+
+
 @pytest.fixture()
 def ca_dir(tmp_path):
     """A throwaway 'mitmproxy' CA so the console can serve it."""
@@ -56,9 +75,9 @@ def ca_dir(tmp_path):
 @pytest.fixture()
 def console(ca_dir):
     store = MemoryStore()
-    instance = SetupConsole(store, port=_free_port(), sidecar_port=8080,
-                            confdir=str(ca_dir), server_host="192.168.2.57")
-    instance.start()
+    instance = _start(lambda port: SetupConsole(
+        store, port=port, sidecar_port=8080, confdir=str(ca_dir),
+        server_host="192.168.2.57"))
     yield instance, store
     instance.stop()
 
@@ -155,8 +174,8 @@ def test_unknown_path_is_404(console):
 
 
 def test_missing_certificate_is_reported_not_crashed(tmp_path):
-    instance = SetupConsole(MemoryStore(), port=_free_port(), confdir=str(tmp_path))
-    instance.start()
+    instance = _start(lambda port: SetupConsole(
+        MemoryStore(), port=port, confdir=str(tmp_path)))
     try:
         status, _, body = _get(instance, "/ca.cer")
         assert status == 503

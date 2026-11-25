@@ -29,8 +29,8 @@ ROOT = Path(__file__).resolve().parents[1]
 MOCK_SKUS = ["g1.ios.2tb.monthly.v1", "g1.ios.20tb.m.v2", "g1.ios.30tb.ai.pro.m"]
 REWRITTEN_SKUS = [
     "g1.2tb.ai.12months_ip_90p",
-    "g1.20tb.3months_ip_90p.acq",
-    "g1.ai.ultra.3months_ip_90p.acq",
+    "g1.20tb.1month_eft.acq",
+    "g1.ai.ultra.1month_eft.acq",
 ]
 
 

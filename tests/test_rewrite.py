@@ -28,9 +28,9 @@ from g1acq import config
 def legacy_v6_rewrite(body: str) -> str:
     """Independent restatement of the v6 algorithm used for parity checks.
 
-    v6 walked SKU_MAP one source at a time, counted plain substring
-    occurrences in the original body to decide the 75p fallback, and replaced
-    with ``split``/``join``.  No token boundaries were considered.
+    The original walked SKU_MAP one source at a time, counted plain substring
+    occurrences in the original body to decide the fallback, and replaced with
+    ``split``/``join``.  No token boundaries were considered.
     """
     present = {
         value
@@ -259,3 +259,36 @@ def test_custom_target_override_is_applied():
 
 def test_default_scope_url():
     assert DEFAULT_AI_URL.startswith("https://one.google.com/ai?")
+
+
+def test_mapping_matches_upstream_v7_6():
+    """Pin the table itself: v7.6.0 switched 20TB/30TB to the one-month free trial."""
+    assert dict(config.SKU_MAP) == {
+        "g1.ios.20tb.m.v2": "g1.20tb.1month_eft.acq",
+        "g1.ios.30tb.ai.pro.m": "g1.ai.ultra.1month_eft.acq",
+    }
+    assert dict(config.FALLBACK) == {
+        "g1.20tb.1month_eft.acq": "g1.20tb.3months_ip_90p.acq",
+        "g1.ai.ultra.1month_eft.acq": "g1.ai.ultra.3months_ip_90p.acq",
+    }
+    assert config.DEFAULT_TARGET == "g1.2tb.ai.12months_ip_90p"
+
+
+def test_free_trial_is_preferred_when_present():
+    """Both offers in the body: the free-trial target wins, no fallback flag."""
+    body = json.dumps([TWENTY, THIRTY, TWENTY_TARGET, TWENTY_FALLBACK,
+                       THIRTY_TARGET, THIRTY_FALLBACK])
+    h = Harness()
+    payload = h.response(body)
+    assert json.loads(payload["body"])[:2] == [TWENTY_TARGET, THIRTY_TARGET]
+    rows = {row["id"]: row for row in h.get(TEST_KEY)["matchedFrom"]}
+    assert rows[TWENTY]["fallback"] is False
+    assert rows[THIRTY]["fallback"] is False
+
+
+def test_fallback_log_names_the_actual_target():
+    """`fallback=` used to be a hardcoded `75p`; it now names the real target."""
+    h = Harness()
+    h.response(json.dumps([TWENTY, TWENTY_FALLBACK]))
+    assert f"fallback={TWENTY_FALLBACK}" in "\n".join(h.logs)
+    assert "fallback=75p" not in "\n".join(h.logs)

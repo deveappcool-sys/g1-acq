@@ -4,6 +4,8 @@
 
 Google One（iOS）订阅入口的**商品 ID 改写与被动采集**工具，用于 **Clash - Rule Based Proxy**（mihomo 内核）及其它 mihomo 客户端。
 
+> 映射表与上游 **v7.6.0** 同步（20TB / 30TB 改为 Ultra 1 个月免费试用，三个月 90p 作备用）。
+>
 > 同样的效果，原本要装 Shadowrocket 才能做到。这个项目把它搬到了 Clash 上：Clash 只负责分流，改写交给一台你自己机器上的旁路服务。
 
 > ⚠️ **仅供研究与兼容性测试。** 本项目通过改写客户端收到的商品编号来观察商店行为，这可能违反 Google / Apple 的服务条款；请勿用于获取未付费的权益，测试过程中不要真正完成购买。作者不对使用后果负责，也不保证任何商品、价格或权益可用。
@@ -98,7 +100,7 @@ G1 ACQ 自检报告
 ✔ 最近改写: rewritten · 59 处（其中 2TB 30）
 ✔ 根证书: 4A:2C:66:50:...
 ✔ 本机地址: 192.168.2.57
-· 版本: 8.1.0 / g1-acq-clash-v8.0
+· 版本: 8.2.0 / g1-acq-clash-v8.2
 ```
 
 英文输出：命令加 `--lang en`，或设 `G1_LANG=en`；控制台在地址后加 `?lang=en`。
@@ -115,11 +117,11 @@ G1 ACQ 自检报告
 | 正文中的完整源 SKU | 默认目标 | 备用目标 |
 |---|---|---|
 | `g1.ios.2tb.` 前缀的完整 SKU | `g1.2tb.ai.12months_ip_90p` | 无 |
-| `g1.ios.20tb.m.v2` | `g1.20tb.3months_ip_90p.acq` | `g1.20tb.3months_ip_75p.acq` |
-| `g1.ios.30tb.ai.pro.m` | `g1.ai.ultra.3months_ip_90p.acq` | `g1.ai.ultra.3months_ip_75p.acq` |
+| `g1.ios.20tb.m.v2` | `g1.20tb.1month_eft.acq` | `g1.20tb.3months_ip_90p.acq` |
+| `g1.ios.30tb.ai.pro.m` | `g1.ai.ultra.1month_eft.acq` | `g1.ai.ultra.3months_ip_90p.acq` |
 
 - 2TB 档固定替换为候选，没有备用档。
-- 20TB / 30TB 各自独立判断：90p 出现在原文就用 90p；90p 缺席而对应 75p 出现时用 75p；两者都没有时仍用 90p。
+- 20TB / 30TB 各自独立判断：1 个月免费试用（`1month_eft`）出现在原文就用它；缺席而对应三个月 90p 出现时用 90p；两者都没有时仍用 `1month_eft`。
 - 判断依据是**响应正文字符串**，不是向 App Store 查询商品目录。
 
 改映射表只改一个文件：[`g1acq/config.py`](g1acq/config.py)。

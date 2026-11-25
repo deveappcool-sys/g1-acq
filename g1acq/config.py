@@ -14,11 +14,11 @@ from types import MappingProxyType
 # --------------------------------------------------------------------------
 # Release identity
 # --------------------------------------------------------------------------
-PROJECT_VERSION = "8.1.0"
-REPORT_VERSION = "v8.1.0"
+PROJECT_VERSION = "8.2.0"
+REPORT_VERSION = "v8.2.0"
 # Written into every collection record so the report can tell an old record
 # from a record produced by the current collector.
-COLLECTOR_VERSION = "g1-acq-clash-v8.0"
+COLLECTOR_VERSION = "g1-acq-clash-v8.2"
 
 # --------------------------------------------------------------------------
 # Scope
@@ -40,17 +40,19 @@ LEGACY_TARGET = "g1.2tb.ai.annual"
 
 SKU_MAP = MappingProxyType(
     {
-        "g1.ios.20tb.m.v2": "g1.20tb.3months_ip_90p.acq",
-        "g1.ios.30tb.ai.pro.m": "g1.ai.ultra.3months_ip_90p.acq",
+        "g1.ios.20tb.m.v2": "g1.20tb.1month_eft.acq",
+        "g1.ios.30tb.ai.pro.m": "g1.ai.ultra.1month_eft.acq",
     }
 )
 
 # Only used when the default target is absent from the original response and
-# the matching fallback is present in it.
+# the matching fallback is present in it.  Mirrors upstream v7.6.0: the 20TB and
+# 30TB tiers now try the one-month free trial first and fall back to the
+# three-month 90p offer.
 FALLBACK = MappingProxyType(
     {
-        "g1.20tb.3months_ip_90p.acq": "g1.20tb.3months_ip_75p.acq",
-        "g1.ai.ultra.3months_ip_90p.acq": "g1.ai.ultra.3months_ip_75p.acq",
+        "g1.20tb.1month_eft.acq": "g1.20tb.3months_ip_90p.acq",
+        "g1.ai.ultra.1month_eft.acq": "g1.ai.ultra.3months_ip_90p.acq",
     }
 )
 

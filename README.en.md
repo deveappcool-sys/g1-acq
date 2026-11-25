@@ -26,7 +26,7 @@ method.
 
 The three-tier mapping, the SKU collection rules, the report fields and the two storage keys
 (`g1.sku.scan.v1`, `g1.pro.annual.test.v1`) follow the original project, so its documentation
-and findings still apply. The upstream declares no licence; if you know the author, please pass
+and findings still apply. The mapping table tracks upstream **v7.6.0**. The upstream declares no licence; if you know the author, please pass
 the word along.
 
 ---
@@ -120,7 +120,7 @@ G1 ACQ 自检报告
 ✔ 最近改写: rewritten · 59 处（其中 2TB 30）
 ✔ 根证书: 4A:2C:66:50:...
 ✔ 本机地址: 192.168.2.57
-· 版本: 8.1.0 / g1-acq-clash-v8.0
+· 版本: 8.2.0 / g1-acq-clash-v8.2
 ```
 
 Key/value diagnostics such as `status=… addedCount=…` are **never translated**: they are parsed
@@ -139,12 +139,13 @@ rewrites **only responses matching `/ai?`**, by complete source SKU:
 | Complete source SKU in the body | Default target | Fallback target |
 |---|---|---|
 | any complete SKU prefixed `g1.ios.2tb.` | `g1.2tb.ai.12months_ip_90p` | none |
-| `g1.ios.20tb.m.v2` | `g1.20tb.3months_ip_90p.acq` | `g1.20tb.3months_ip_75p.acq` |
-| `g1.ios.30tb.ai.pro.m` | `g1.ai.ultra.3months_ip_90p.acq` | `g1.ai.ultra.3months_ip_75p.acq` |
+| `g1.ios.20tb.m.v2` | `g1.20tb.1month_eft.acq` | `g1.20tb.3months_ip_90p.acq` |
+| `g1.ios.30tb.ai.pro.m` | `g1.ai.ultra.1month_eft.acq` | `g1.ai.ultra.3months_ip_90p.acq` |
 
 - The 2TB tier is always replaced by the fixed candidate and has no fallback.
-- 20TB and 30TB decide independently: if the 90p target appears in the original body, use it;
-  if it is absent and the matching 75p appears, use 75p; if neither appears, still use 90p.
+- 20TB and 30TB decide independently: if the one-month free trial (`1month_eft`) appears in the
+  original body, use it; if it is absent and the matching three-month 90p appears, use 90p; if
+  neither appears, still use `1month_eft`.
 - The decision is made on **the response text**, not by querying a store catalogue.
 
 Changing the table means editing one file: [`g1acq/config.py`](g1acq/config.py).
@@ -192,7 +193,7 @@ uv pip install --python .venv/bin/python pytest pyyaml
 
 | Layer | Contents |
 |---|---|
-| Rewrite contract | complete-token matching for all three tiers, the fixed 2TB candidate, independent 90p preference and 75p fallback, URL scope, zero-match, collection dedupe and the 300-ID cap, the 10-event log, redaction, legacy records, report fields and HTML escaping |
+| Rewrite contract | complete-token matching for all three tiers, the fixed 2TB candidate, free-trial preference and 90p fallback, URL scope, zero-match, collection dedupe and the 300-ID cap, the 10-event log, redaction, legacy records, report fields and HTML escaping |
 | Profile generation | rules and outbounds in both modes, `PROXY` never defaulting to the sidecar, credentials, validation, no placeholder left behind |
 | Setup console | live address, importable `/clash.yaml`, correct certificate MIME types, `/status.json` reflecting real state, 404 for unknown paths |
 | Clash validation | real `mihomo -t` on generated profiles, every rule target and group member resolving, `one.google.com` before `MATCH`, the four-condition QUIC guard |

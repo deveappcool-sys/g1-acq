@@ -98,7 +98,7 @@ G1_NO_SERVICE=1 ./install.sh
 | 步骤 | 期望 | 不对时看 |
 |---|---|---|
 | Clash 连上 | 状态栏出现 VPN 标识 | 配置没选中 |
-| 打开 `https://one.google.com/g1-sku-report` | 显示「G1 ACQ 旁路已接管 · v8.1.0」 | 证书信任、规则顺序 |
+| 打开 `https://one.google.com/g1-sku-report` | 显示「G1 ACQ 旁路已接管 · v8.2.0」 | 证书信任、规则顺序 |
 | 打开 Google One 点一个方案 | 控制台「最近改写」出现数字 | 见第 6 节 |
 | 点「订阅」 | 弹出 **App Store 的购买面板** | 见第 5 节 |
 
@@ -161,7 +161,7 @@ journalctl --user -u g1-acq -f        # Linux systemd
 ```
 [g1-acq] g1-acq-clash-v8.0 status=new-skus addedCount=11 ...
 [g1-acq] g1-acq-clash-v8.0 hits=59 annualHits=30
-[g1-acq] g1.ios.20tb.m.v2 -> g1.20tb.3months_ip_90p.acq x19
+[g1-acq] g1.ios.20tb.m.v2 -> g1.20tb.1month_eft.acq x19
 ```
 
 ---
