@@ -114,6 +114,8 @@ install_service() {
 PLIST
       # bootout 之后 launchd 需要一点时间释放这个 label，立刻 bootstrap
       # 会返回 EIO（5）；重试几次即可，重试期间服务仍是可用的旧进程。
+      # 手动停过服务的人会把 label disable 掉；重新 enable 否则 bootstrap 会失败
+      launchctl enable "gui/$(id -u)/$LABEL" 2>/dev/null || true
       launchctl bootout "gui/$(id -u)/$LABEL" 2>/dev/null || true
       local ok=0
       for _ in 1 2 3 4 5 6; do
