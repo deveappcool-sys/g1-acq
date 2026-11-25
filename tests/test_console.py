@@ -11,7 +11,7 @@ import pytest
 
 yaml = pytest.importorskip("yaml")
 
-from g1acq import ca  # noqa: E402
+from g1acq import ca, i18n  # noqa: E402
 from g1acq.app import G1App  # noqa: E402
 from g1acq.setup_console import SetupConsole  # noqa: E402
 from g1acq.store import MemoryStore  # noqa: E402
@@ -160,7 +160,7 @@ def test_missing_certificate_is_reported_not_crashed(tmp_path):
     try:
         status, _, body = _get(instance, "/ca.cer")
         assert status == 503
-        assert b"mitmproxy" in body
+        assert body.decode().strip() == i18n.t("ui.ca_missing")
     finally:
         instance.stop()
 

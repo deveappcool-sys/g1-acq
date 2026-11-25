@@ -17,7 +17,7 @@ import shutil
 import sys
 from pathlib import Path
 
-from . import config, doctor, launch, network
+from . import config, doctor, i18n, launch, network
 from .report import build_report
 from .store import FileStore
 
@@ -31,13 +31,7 @@ def _serve(args: argparse.Namespace) -> int:
         print(f"[g1-acq] {error}", file=sys.stderr)
         return 2
     if not auth:
-        print(
-            "[g1-acq] warning: no --auth set; anyone who can reach this port can "
-            "use it as a proxy and read or clear the report.\n"
-            "[g1-acq]          add --auth user:password (and matching credentials "
-            "to the Clash G1-MITM proxy) unless it listens on loopback only.",
-            file=sys.stderr,
-        )
+        print(i18n.t("cli.no_auth_warning"), file=sys.stderr)
     options = launch.LaunchOptions(
         port=args.port,
         state=args.state,
@@ -55,16 +49,11 @@ def _serve(args: argparse.Namespace) -> int:
         if sibling.exists():
             mitmdump = str(sibling)
     if mitmdump is None:
-        print(
-            "mitmdump not found. Install the sidecar dependencies first:\n"
-            "  pip install mitmproxy\n"
-            "or run this command inside the project virtualenv.",
-            file=sys.stderr,
-        )
+        print(i18n.t("cli.no_mitmdump"), file=sys.stderr)
         return 2
     argv = launch.build_argv(options, mitmdump=mitmdump)
-    print(f"[g1-acq] state: {launch.state_path(options.state)}", file=sys.stderr)
-    print(f"[g1-acq] exec: {launch.describe(argv)}", file=sys.stderr)
+    print(i18n.t("cli.state_path", path=launch.state_path(options.state)), file=sys.stderr)
+    print(i18n.t("cli.exec", command=launch.describe(argv)), file=sys.stderr)
     os.execv(mitmdump, argv)
     return 0  # pragma: no cover
 
@@ -86,6 +75,12 @@ def _state_parser(sub: argparse.ArgumentParser, with_target: bool) -> None:
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="python -m g1acq", description=__doc__, formatter_class=argparse.RawTextHelpFormatter
+    )
+    parser.add_argument(
+        "--lang",
+        choices=i18n.LANGUAGES,
+        default=None,
+        help="输出语言 / output language (default: $G1_LANG or zh)",
     )
     sub = parser.add_subparsers(dest="action", required=True)
 
@@ -153,7 +148,7 @@ def _parser() -> argparse.ArgumentParser:
 def _load(args: argparse.Namespace) -> tuple[FileStore, str]:
     path = os.path.abspath(os.path.expanduser(args.state))
     if not os.path.exists(path):
-        print(f"[g1-acq] no state file yet at {path}", file=sys.stderr)
+        print(i18n.t("cli.no_state", path=path), file=sys.stderr)
     return FileStore(path), path
 
 
@@ -162,8 +157,8 @@ def _report(args: argparse.Namespace) -> int:
     url = config.REPORT_ROOT + ("" if args.html else "?format=json")
     try:
         response = build_report(store, url, settings=config.Settings(target=args.target))
-    except ValueError as error:
-        print(f"invalid target: {error}", file=sys.stderr)
+    except ValueError:
+        print(i18n.t("cli.bad_target", target=args.target), file=sys.stderr)
         return 2
     print(response.body)
     return 0
@@ -172,7 +167,7 @@ def _report(args: argparse.Namespace) -> int:
 def _clear(args: argparse.Namespace) -> int:
     store, path = _load(args)
     if not os.path.exists(path):
-        print("没有可清理的记录。")
+        print(i18n.t("cli.nothing_to_clear"))
         return 0
     response = build_report(store, config.REPORT_ROOT + "?clear=1")
     print(response.body.split("<p>")[1].split("</p>")[0] if "<p>" in response.body else "cleared")
@@ -193,13 +188,13 @@ def _doctor(args: argparse.Namespace) -> int:
 def _url(args: argparse.Namespace) -> int:
     address = network.primary_address()
     if not address:
-        print("没检测到局域网地址：这台机器现在没有连上任何网络？", file=sys.stderr)
+        print(i18n.t("cli.no_lan"), file=sys.stderr)
         return 2
     console = f"http://{address}:{args.console_port}/"
     clash = f"{console}clash.yaml?mode=g1"
-    print("手机先打开这个（装证书 + 导配置）：")
+    print(i18n.t("cli.console_hint"))
     print(f"  {console}")
-    print("Clash 也可以直接用「从 URL 导入」这个地址：")
+    print(i18n.t("cli.clash_hint"))
     print(f"  {clash}")
     print()
     try:
@@ -214,11 +209,7 @@ def _url(args: argparse.Namespace) -> int:
 def _ca(args: argparse.Namespace) -> int:
     source = Path(os.path.expanduser(args.confdir)) / "mitmproxy-ca-cert.pem"
     if not source.exists():
-        print(
-            f"CA not found at {source}. Start the sidecar once; mitmproxy creates "
-            "the CA on first run.",
-            file=sys.stderr,
-        )
+        print(i18n.t("cli.ca_not_found", path=source), file=sys.stderr)
         return 2
     try:
         from cryptography import x509
@@ -232,13 +223,14 @@ def _ca(args: argparse.Namespace) -> int:
     target.write_bytes(der)
     fingerprint = certificate.fingerprint(hashes.SHA256()).hex()
     pretty = ":".join(fingerprint[i : i + 2] for i in range(0, len(fingerprint), 2))
-    print(f"wrote {target} ({len(der)} bytes)")
+    print(i18n.t("cli.ca_wrote", path=target, size=len(der)))
     print(f"SHA-256 {pretty.upper()}")
     return 0
 
 
 def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
+    i18n.set_language(args.lang)
     return args.handler(args)
 
 

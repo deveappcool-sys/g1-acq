@@ -19,7 +19,7 @@ import re
 from dataclasses import dataclass
 from typing import Any, Callable
 
-from . import config
+from . import config, i18n
 from .collector import now_iso
 from .store import Store
 
@@ -119,10 +119,10 @@ def save_record(store: Store, record: dict, *, emit: Emit | None = None) -> bool
             )
         )
     except Exception:
-        emit("[g1-acq] local record unavailable")
+        emit(i18n.t("log.record_unavailable"))
         return False
     if not stored:
-        emit("[g1-acq] local record write failed")
+        emit(i18n.t("log.record_write_failed"))
     return stored
 
 

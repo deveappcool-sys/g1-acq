@@ -12,7 +12,7 @@ from conftest import (
     Harness,
 )
 
-from g1acq import config
+from g1acq import config, i18n
 
 
 def test_activity_distinguishes_new_repeated_empty_and_nontext():
@@ -216,11 +216,13 @@ def test_escaped_dot_decoding_is_ascii_case_insensitive():
     assert ESCAPED_DOT_RE.sub(".", "g1&perıod;x") == "g1&perıod;x"
 
 
-def test_store_failure_logs_match_the_original_wording():
+def test_store_failure_logs_distinguish_a_raise_from_a_refusal():
     raising = Harness(storage_throws=True)
     raising.response(SOURCE)
-    assert "[g1-acq] local record unavailable" in raising.logs
+    assert i18n.t("log.record_unavailable") in raising.logs
 
     refusing = Harness(storage_write_fails=True)
     refusing.response(SOURCE)
-    assert "[g1-acq] local record write failed" in refusing.logs
+    assert i18n.t("log.record_write_failed") in refusing.logs
+    # the two cases must not collapse into one message
+    assert i18n.t("log.record_unavailable") != i18n.t("log.record_write_failed")

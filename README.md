@@ -101,6 +101,9 @@ G1 ACQ 自检报告
 · 版本: 8.1.0 / g1-acq-clash-v8.0
 ```
 
+英文输出：命令加 `--lang en`，或设 `G1_LANG=en`；控制台在地址后加 `?lang=en`。
+日志里的 `status=… addedCount=…` 这类键值对**不随语言变化**，方便跨版本对照和 grep。
+
 完整排错见 **[docs/clash-setup.md](docs/clash-setup.md)**，实机核对与字段字典见 **[docs/pro-annual-test.md](docs/pro-annual-test.md)**。
 
 ---

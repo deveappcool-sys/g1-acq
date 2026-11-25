@@ -107,8 +107,8 @@ Back on the console, once "last rewrite" shows a number, the rewrite is live.
 ./.venv/bin/python -m g1acq doctor
 ```
 
-It prints a report you can paste into an issue. (The CLI and the console speak Chinese for now;
-the ✔/✖ markers and the values carry the meaning.)
+It prints a report you can paste into an issue. Chinese is the default output language; add
+`--lang en` (or set `G1_LANG=en`) for English, and use `?lang=en` on the console.
 
 ```
 G1 ACQ 自检报告
@@ -122,6 +122,9 @@ G1 ACQ 自检报告
 ✔ 本机地址: 192.168.2.57
 · 版本: 8.1.0 / g1-acq-clash-v8.0
 ```
+
+Key/value diagnostics such as `status=… addedCount=…` are **never translated**: they are parsed
+and compared across versions, so they stay identical in both languages.
 
 Full troubleshooting lives in **[docs/clash-setup.md](docs/clash-setup.md)** and the field
 dictionary in **[docs/pro-annual-test.md](docs/pro-annual-test.md)** (both in Chinese).

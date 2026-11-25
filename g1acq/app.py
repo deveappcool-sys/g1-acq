@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
-from . import config
+from . import config, i18n
 from .collector import collect
 from .report import ReportResponse, build_report
 from .rewriter import log_record, rewrite, save_record
@@ -42,7 +42,7 @@ class G1App:
         try:
             return build_report(self.store, url, settings=self.settings, emit=self.emit)
         except Exception as error:  # a broken report must not break browsing
-            self.emit(f"[g1-sku-report] report failed: {error!r}")
+            self.emit(i18n.t("log.report_failed", error=repr(error)))
             return None
 
     # -- response path ---------------------------------------------------
@@ -54,7 +54,7 @@ class G1App:
         try:
             collect(self.store, url, body, emit=self.emit)
         except Exception:
-            self.emit("[g1-acq] SKU collection unavailable")
+            self.emit(i18n.t("log.collect_unavailable"))
 
         if not is_rewrite_scope(url):
             return None
@@ -62,7 +62,7 @@ class G1App:
         try:
             result = rewrite(body, settings=self.settings)
         except Exception as error:
-            self.emit(f"[g1-acq] rewrite unavailable: {error!r}")
+            self.emit(i18n.t("log.rewrite_unavailable", error=repr(error)))
             return None
 
         save_record(self.store, result.record, emit=self.emit)

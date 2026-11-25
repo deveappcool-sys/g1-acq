@@ -5,34 +5,46 @@ not see what to do next, and the pieces (certificate, profile, current address,
 whether the phone is even connected) lived in four different places.  This
 console puts them on one page, generated from the machine's real state.
 
-    http://<lan-ip>:8090/
+    http://<lan-ip>:8090/          中文
+    http://<lan-ip>:8090/?lang=en  English
 
 It intentionally serves only four things — the page, the CA, a generated
-profile and a status snapshot — so it can never be used to read arbitrary
-files from the host.
+profile and a status snapshot — so it can never be used to read arbitrary files
+from the host.
 """
 
 from __future__ import annotations
 
 import json
+import re
 import threading
 import time
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, Callable
 
-from . import ca, config, network, profile
+from . import ca, config, i18n, network, profile
 from .report import build_report
 from .store import Store
 
 DEFAULT_PORT = 8090
 MAX_SUBSCRIPTION_LENGTH = 2048
 
-PAGE = """<!doctype html><html lang=zh-CN><meta charset=utf-8>
+_PLACEHOLDER = re.compile(r"\{\{T:([a-z0-9_.]+)\}\}")
+
+# Strings the browser needs; everything else is rendered on the server.
+_JS_KEYS = (
+    "ui.loading", "ui.kv.server", "ui.kv.address", "ui.kv.clients", "ui.kv.clients.never",
+    "ui.kv.clients.times", "ui.kv.scanned", "ui.kv.candidates", "ui.kv.last",
+    "ui.kv.last.none", "ui.kv.last.at", "ui.hint.none", "ui.hint.connected",
+    "ui.hint.rewritten",
+)
+
+PAGE = """<!doctype html><html lang={{HTML_LANG}}><meta charset=utf-8>
 <meta name=viewport content="width=device-width,initial-scale=1">
-<title>G1 ACQ 安装控制台</title>
+<title>{{T:ui.title}}</title>
 <style>
-body{font:16px/1.6 -apple-system,BlinkMacSystemFont,sans-serif;margin:0;padding:20px;
+body{font:16px/1.6 -apple-system,BlinkMacSystemFont,sans-serif;padding:20px;
 color:#1c2737;background:#f5f7fa;max-width:720px;margin:0 auto}
 h1{font-size:22px;margin:14px 0 6px}
 h2{font-size:17px;margin:0 0 12px}
@@ -52,68 +64,73 @@ border-radius:9px;font:inherit;margin-top:8px}
 .warn{color:#9a5b00;font-weight:600}
 pre{white-space:pre-wrap;word-break:break-all;font-size:12px;background:#eef2f7;
 padding:10px;border-radius:8px}
+.lang{float:right;font-size:13px}
 </style>
-<h1>G1 ACQ 安装控制台 <span class=muted style="font-size:13px">v{{VERSION}}</span></h1>
-<p class=muted>这里的东西都由这台机器实时生成，不需要手改配置。</p>
+<h1>{{T:ui.title}} <span class=muted style="font-size:13px">v{{VERSION}}</span>
+<span class=lang><a href="{{SELF_ZH}}">中文</a> · <a href="{{SELF_EN}}">English</a></span></h1>
+<p class=muted>{{T:ui.subtitle}}</p>
 
 <section>
-<h2>第一步 · 安装证书</h2>
-<p class=muted>手机需要信任这张证书，旁路才能读到 <code>one.google.com</code> 的响应。
-下载后到 <b>设置 → 通用 → VPN 与设备管理</b> 安装，再到
-<b>设置 → 通用 → 关于本机 → 证书信任设置</b> 打开完全信任。</p>
-<a class="btn" href="/ca.mobileconfig">下载证书（.mobileconfig）</a>
-<a class="btn alt" href="/ca.cer">下载 .cer</a>
-<p class=muted>证书 SHA-256：<code id=fp>读取中…</code></p>
+<h2>{{T:ui.step1}}</h2>
+<p class=muted>{{T:ui.step1.body}}</p>
+<a class="btn" href="/ca.mobileconfig">{{T:ui.download_profile}}</a>
+<a class="btn alt" href="/ca.cer">{{T:ui.download_cer}}</a>
+<p class=muted>{{T:ui.fingerprint}}<code id=fp>{{T:ui.loading}}</code></p>
 </section>
 
 <section>
-<h2>第二步 · 导入 Clash 配置</h2>
-<p class=muted>旁路地址已经写进配置：<code>{{SERVER}}:{{PORT}}</code></p>
-<a class="btn" href="/clash.yaml?mode=g1">只做 G1（其它直连）</a>
-<p class=muted>适合先在手机上把链路走通，不需要任何机场节点。</p>
+<h2>{{T:ui.step2}}</h2>
+<p class=muted>{{T:ui.step2.body}}<code>{{SERVER}}:{{PORT}}</code></p>
+<a class="btn" href="/clash.yaml?mode=g1">{{T:ui.g1_only}}</a>
+<p class=muted>{{T:ui.g1_only.note}}</p>
 
 <form method=get action="/clash.yaml" target=_blank>
 <input type=hidden name=mode value=sub>
-<input type=url name=sub placeholder="可选：粘贴你的机场订阅链接，生成带节点的完整配置" maxlength={{MAX_SUB}}>
-<button type=submit>生成带订阅的配置</button>
+<input type=url name=sub placeholder="{{T:ui.sub_placeholder}}" maxlength={{MAX_SUB}}>
+<button type=submit>{{T:ui.sub_button}}</button>
 </form>
-<p class=muted>订阅链接只在这台机器上使用，不会上传。生成的配置可以直接用 Clash
-「从 URL 导入」——把下面的地址复制过去，或者用手机扫二维码。</p>
+<p class=muted>{{T:ui.step2.hint}}</p>
 <p><code id=clash-url>{{CLASH_URL}}</code></p>
-<div class=qr><img id=qr alt="配置二维码" src="/qr.svg?d={{CLASH_URL_ENCODED}}" width=200 height=200></div>
+<div class=qr><img id=qr alt=QR src="/qr.svg?d={{CLASH_URL_ENCODED}}" width=200 height=200></div>
 </section>
 
 <section>
-<h2>第三步 · 看状态</h2>
-<div class=kv id=status><div>读取中…</div></div>
+<h2>{{T:ui.step3}}</h2>
+<div class=kv id=status><div>{{T:ui.loading}}</div></div>
 <p class=muted id=hint></p>
 </section>
 
-<p class=muted>这个页面只在你自己的局域网内可访问。用完可以关掉：
-<code>g1-acq serve --console 0</code> 或直接停掉服务。</p>
+<p class=muted>{{T:ui.footer}}</p>
 
 <script>
+const L = {{LANG_JSON}};
 const fmt = v => (v === null || v === undefined || v === '') ? '—' : v;
 async function refresh(){
   try{
     const r = await fetch('/status.json', {cache:'no-store'});
     const s = await r.json();
-    document.getElementById('fp').textContent = s.ca_fingerprint || '未生成';
+    document.getElementById('fp').textContent = s.ca_fingerprint || '—';
+    const clients = s.clients_seen
+      ? L['ui.kv.clients.times'].replace('{count}', s.clients_seen)
+      : L['ui.kv.clients.never'];
+    const last = s.last_test_status
+      ? (s.last_test_status + ' · ' + s.hit_count + '×')
+      : L['ui.kv.last.none'];
     const rows = [
-      ['旁路', s.server + ':' + s.port],
-      ['本机地址', (s.lan_ips||[]).join(' / ') || '未检测到'],
-      ['手机连过', s.clients_seen ? (s.clients_seen + ' 次连接') : '还没有'],
-      ['已扫描响应', fmt(s.scanned_responses)],
-      ['采集到的编号', fmt(s.candidates)],
-      ['最近改写', s.last_test_status ? (s.last_test_status + ' · ' + s.hit_count + ' 处') : '还没有'],
-      ['最近改写时间', fmt(s.last_test_at)],
+      [L['ui.kv.server'], s.server + ':' + s.port],
+      [L['ui.kv.address'], (s.lan_ips||[]).join(' / ') || '—'],
+      [L['ui.kv.clients'], clients],
+      [L['ui.kv.scanned'], fmt(s.scanned_responses)],
+      [L['ui.kv.candidates'], fmt(s.candidates)],
+      [L['ui.kv.last'], last],
+      [L['ui.kv.last.at'], fmt(s.last_test_at)],
     ];
-    const box = document.getElementById('status');
-    box.innerHTML = rows.map(([k,v]) => '<div>'+k+'</div><div>'+v+'</div>').join('');
+    document.getElementById('status').innerHTML =
+      rows.map(([k,v]) => '<div>'+k+'</div><div>'+v+'</div>').join('');
     const hint = document.getElementById('hint');
-    if (!s.clients_seen) hint.textContent = '还没有手机连过来。确认手机和这台机器在同一个 Wi-Fi，并且 Clash 已导入上面的配置并连接。';
-    else if (!s.last_test_status) hint.textContent = '手机已经连上，但还没抓到 one.google.com 的改写请求。打开 Google One 点一个方案试试。';
-    else hint.textContent = '改写已经生效，去看 App Store 弹出的购买面板里的商品和价格。';
+    if (!s.clients_seen) hint.textContent = L['ui.hint.none'];
+    else if (!s.last_test_status) hint.textContent = L['ui.hint.connected'];
+    else hint.textContent = L['ui.hint.rewritten'];
   }catch(e){ /* keep the page usable if polling fails */ }
 }
 refresh(); setInterval(refresh, 3000);
@@ -165,7 +182,7 @@ class SetupConsole:
         self._httpd.daemon_threads = True
         self._thread = threading.Thread(target=self._httpd.serve_forever, daemon=True)
         self._thread.start()
-        self._emit(f"[g1-acq] 安装控制台: {self.url}")
+        self._emit(i18n.t("log.console_ready", url=self.url))
 
     def stop(self) -> None:
         if self._httpd is not None:
@@ -205,15 +222,22 @@ class SetupConsole:
             "sources": test["matchedFrom"],
         }
 
-    def _page(self) -> bytes:
-        clash_url = f"http://{self._host}:{self.port}/clash.yaml?mode=g1"
+    def _page(self, lang: str) -> bytes:
+        base = f"http://{self._host}:{self.port}/"
+        clash_url = f"{base}clash.yaml?mode=g1"
+        html = _PLACEHOLDER.sub(lambda m: i18n.t(m.group(1), lang=lang), PAGE)
         html = (
-            PAGE.replace("{{SERVER}}", self._host)
-            .replace("{{PORT}}", str(self.sidecar_port))
+            html.replace("{{HTML_LANG}}", "zh-CN" if lang == "zh" else "en")
             .replace("{{VERSION}}", config.PROJECT_VERSION)
+            .replace("{{SERVER}}", self._host)
+            .replace("{{PORT}}", str(self.sidecar_port))
             .replace("{{MAX_SUB}}", str(MAX_SUBSCRIPTION_LENGTH))
             .replace("{{CLASH_URL_ENCODED}}", urllib.parse.quote(clash_url, safe=""))
             .replace("{{CLASH_URL}}", clash_url)
+            .replace("{{SELF_ZH}}", "./?lang=zh")
+            .replace("{{SELF_EN}}", "./?lang=en")
+            .replace("{{LANG_JSON}}", json.dumps(
+                {key: i18n.t(key, lang=lang) for key in _JS_KEYS}, ensure_ascii=False))
         )
         return html.encode("utf-8")
 
@@ -258,10 +282,12 @@ class SetupConsole:
             def do_GET(self) -> None:  # noqa: N802 - stdlib naming
                 parsed = urllib.parse.urlsplit(self.path)
                 query = urllib.parse.parse_qs(parsed.query)
+                lang = i18n.normalize((query.get("lang") or [None])[0]
+                                      or i18n.current_language())
                 route = parsed.path
                 try:
                     if route == "/":
-                        self._send(console._page(), "text/html; charset=utf-8")
+                        self._send(console._page(lang), "text/html; charset=utf-8")
                     elif route == "/clash.yaml":
                         body, content_type = console._clash(query)
                         self._send(body, content_type, extra={
@@ -284,8 +310,9 @@ class SetupConsole:
                             self._send(svg, "image/svg+xml")
                     else:
                         self._send(b"not found", "text/plain", 404)
-                except ca.MissingCertificate as error:
-                    self._send(str(error).encode(), "text/plain; charset=utf-8", 503)
+                except ca.MissingCertificate:
+                    self._send(i18n.t("ui.ca_missing", lang=lang).encode(),
+                               "text/plain; charset=utf-8", 503)
                 except profile.ProfileError as error:
                     self._send(str(error).encode(), "text/plain; charset=utf-8", 400)
                 except Exception as error:  # pragma: no cover - defensive

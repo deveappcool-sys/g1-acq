@@ -28,7 +28,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from mitmproxy import ctx, http  # noqa: E402
 
-from g1acq import config  # noqa: E402
+from g1acq import config, i18n  # noqa: E402
 from g1acq.app import G1App  # noqa: E402
 from g1acq.setup_console import SetupConsole  # noqa: E402
 from g1acq.store import FileStore  # noqa: E402
@@ -133,10 +133,8 @@ class G1Addon:
 
     def running(self) -> None:
         self._rebuild()
-        _info(
-            f"[g1-acq] {config.PROJECT_VERSION} ready: target={self.settings.target}"
-            f" state={self._state_path()}"
-        )
+        _info(i18n.t("log.ready", version=config.PROJECT_VERSION,
+                     target=self.settings.target, state=self._state_path()))
         self._start_console()
 
     def _start_console(self) -> None:
@@ -155,7 +153,7 @@ class G1Addon:
         try:
             console.start()
         except OSError as error:
-            _warn(f"[g1-acq] 安装控制台未启动（端口 {port} 被占用）: {error}")
+            _warn(i18n.t("log.console_failed", port=port, error=error))
             return
         self.console = console
 
@@ -177,7 +175,7 @@ class G1Addon:
                 target=target, max_body_bytes=int(ctx.options.g1_max_body or 0)
             )
         except ValueError as error:
-            _warn(f"[g1-acq] invalid option, using defaults: {error}")
+            _warn(i18n.t("log.invalid_option", error=error))
             self.settings = config.SETTINGS
         if self.app is not None and not force:
             self.app.settings = self.settings
