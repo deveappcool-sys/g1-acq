@@ -1,5 +1,7 @@
 # g1-acq · Clash 版
 
+**中文** · [English](README.en.md)
+
 Google One（iOS）订阅入口的**商品 ID 改写与被动采集**工具，用于 **Clash - Rule Based Proxy**（mihomo 内核）及其它 mihomo 客户端。
 
 > 同样的效果，原本要装 Shadowrocket 才能做到。这个项目把它搬到了 Clash 上：Clash 只负责分流，改写交给一台你自己机器上的旁路服务。
