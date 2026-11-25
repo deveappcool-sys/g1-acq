@@ -28,7 +28,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from mitmproxy import ctx, http  # noqa: E402
 
-from g1acq import config, i18n  # noqa: E402
+from g1acq import config, discovery, i18n  # noqa: E402
 from g1acq.app import G1App  # noqa: E402
 from g1acq.setup_console import SetupConsole  # noqa: E402
 from g1acq.store import FileStore  # noqa: E402
@@ -97,6 +97,7 @@ class G1Addon:
         self.app: G1App | None = None
         self.settings = config.SETTINGS
         self.console: SetupConsole | None = None
+        self.discoveries: discovery.Discoveries | None = None
         self._logger = logging.getLogger("g1-acq")
 
     # -- mitmproxy lifecycle --------------------------------------------
@@ -120,6 +121,12 @@ class G1Addon:
             help="Skip response bodies larger than this many bytes (0 = no limit).",
         )
         loader.add_option(
+            name="g1_discover",
+            typespec=bool,
+            default=False,
+            help="Record what the App Store answers for each injected product ID.",
+        )
+        loader.add_option(
             name="g1_console",
             typespec=int,
             default=8090,
@@ -133,6 +140,9 @@ class G1Addon:
 
     def running(self) -> None:
         self._rebuild()
+        if ctx.options.g1_discover:
+            self.discoveries = discovery.Discoveries()
+            _info(f"[g1-acq] discovery log: {self.discoveries.path}")
         _info(i18n.t("log.ready", version=config.PROJECT_VERSION,
                      target=self.settings.target, state=self._state_path()))
         self._start_console()
@@ -201,10 +211,37 @@ class G1Addon:
             report.headers,
         )
 
+    def _record_store(self, flow: http.HTTPFlow) -> None:
+        """Log the App Store's answer for whatever product IDs we sent it."""
+        if self.discoveries is None:
+            return
+        if not discovery.is_store_host(flow.request.pretty_host):
+            return
+        try:
+            entry = self.discoveries.record(
+                host=flow.request.pretty_host,
+                url=flow.request.pretty_url,
+                method=flow.request.method,
+                status=flow.response.status_code,
+                content_type=flow.response.headers.get("content-type", ""),
+                request_body=flow.request.raw_content,
+                response_body=flow.response.get_content(strict=False),
+            )
+        except Exception as error:  # pragma: no cover - defensive
+            _warn(f"[g1-acq] discovery record failed: {error!r}")
+            return
+        if entry["requested"]:
+            _info(
+                f"[g1-acq] store asked for {', '.join(entry['requested'])}"
+                f" -> {entry['status']}"
+                f" answered={len(entry['answered'])}"
+            )
+
     def response(self, flow: http.HTTPFlow) -> None:
         """Scan for candidate SKUs and rewrite ``/ai?`` bodies."""
         if flow.response is None or self.app is None:
             return
+        self._record_store(flow)
         try:
             body = self._decoded_body(flow.response)
             replacement = self.app.on_response(flow.request.pretty_url, body)

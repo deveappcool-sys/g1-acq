@@ -110,6 +110,8 @@ Back on the console, once "last rewrite" shows a number, the rewrite is live.
 It prints a report you can paste into an issue. Chinese is the default output language; add
 `--lang en` (or set `G1_LANG=en`) for English, and use `?lang=en` on the console.
 
+**See which tiers and discounts this account/region actually receives**: `./.venv/bin/python -m g1acq catalog` (add `--md docs/sku-atlas.md` to export a table). It is a captured snapshot, not a global catalogue.
+
 ```
 G1 ACQ 自检报告
 ========================================

@@ -40,6 +40,7 @@ def _serve(args: argparse.Namespace) -> int:
         bind=args.bind,
         auth=auth,
         console=args.console,
+        discover=args.discover,
     )
     mitmdump = shutil.which("mitmdump")
     if mitmdump is None:
@@ -88,6 +89,12 @@ def _parser() -> argparse.ArgumentParser:
     serve.add_argument("--port", type=int, default=launch.DEFAULT_PORT)
     serve.add_argument("--bind", default="", help="listen address (default: all)")
     serve.add_argument(
+        "--discover",
+        action="store_true",
+        default=os.environ.get("G1_DISCOVER", "").lower() in ("1", "true", "yes"),
+        help="also intercept the App Store storefront and record product-ID verdicts",
+    )
+    serve.add_argument(
         "--console",
         type=int,
         default=launch.DEFAULT_CONSOLE_PORT,
@@ -122,6 +129,15 @@ def _parser() -> argparse.ArgumentParser:
     doctor_cmd.add_argument("--confdir", default="~/.mitmproxy")
     _state_parser(doctor_cmd, with_target=False)
     doctor_cmd.set_defaults(handler=_doctor)
+
+    cat = sub.add_parser("catalog", help="list the product IDs collected so far, by discount")
+    cat.add_argument("--state", default=launch.DEFAULT_STATE)
+    cat.add_argument("--md", default="", help="also write a markdown file to this path")
+    cat.set_defaults(handler=_catalog)
+
+    disc = sub.add_parser("discovery", help="summarise what the App Store answered")
+    disc.add_argument("--log", default="~/.g1-acq/discovery.jsonl")
+    disc.set_defaults(handler=_discovery)
 
     url = sub.add_parser("url", help="print the setup console address and a QR code")
     url.add_argument("--console-port", type=int, default=launch.DEFAULT_CONSOLE_PORT)
@@ -183,6 +199,41 @@ def _doctor(args: argparse.Namespace) -> int:
     )
     print(doctor.render(checks, state_path=args.state))
     return 0 if not any(c.status == doctor.BAD for c in checks) else 1
+
+
+def _catalog(args: argparse.Namespace) -> int:
+    from . import catalog
+
+    skus = catalog.load(args.state)
+    print(catalog.render_text(skus))
+    if args.md and skus:
+        path = Path(os.path.expanduser(args.md))
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            catalog.render_markdown(skus, source=f"`{args.state}`"), encoding="utf-8")
+        print(f"\n已写出 {path}")
+    return 0 if skus else 1
+
+
+def _discovery(args: argparse.Namespace) -> int:
+    from . import discovery
+
+    log = discovery.Discoveries(args.log)
+    rows = log.summary()
+    if not rows:
+        print(f"还没有记录（{log.path}）。确认旁路是用 --discover 启动的，"
+              f"然后在手机上点一次订阅。" if i18n.current_language() == "zh" else
+              f"Nothing recorded yet ({log.path}). Start the sidecar with --discover, "
+              f"then tap a purchase in the app.")
+        return 1
+    width = max(len(r["id"]) for r in rows)
+    print(f"{'product id'.ljust(width)}  asked  answered  verdict")
+    for row in rows:
+        print(f"{row['id'].ljust(width)}  {row['requested']:5}  {row['answered']:8}  {row['verdict']}")
+    print()
+    print("answered = Apple 返回了该商品的元数据（ID 有效）")
+    print("requested-only = 发出去了但 Apple 没回（多半无效）")
+    return 0
 
 
 def _url(args: argparse.Namespace) -> int:

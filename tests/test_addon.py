@@ -182,3 +182,34 @@ def test_missing_body_counts_as_nontext():
     scan = json.loads(store.read(config.SCAN_KEY))
     assert scan["scannedResponses"] == 0
     assert scan["nonTextResponses"] == 1
+
+
+def test_every_module_level_name_the_addon_uses_is_imported():
+    """A missing import only shows up at runtime, inside mitmproxy, as a crash.
+
+    That has bitten twice: `i18n` and `discovery` were used before they were
+    imported, and mitmproxy turns the resulting NameError into "Error logged
+    during startup, exiting".  ``symtable`` tells us exactly which names a
+    function resolves at module scope, so this catches it without running the
+    addon.
+    """
+    import pathlib
+    import symtable
+
+    source = pathlib.Path(g1_addon.__file__).read_text(encoding="utf-8")
+    table = symtable.symtable(source, "g1_addon.py", "exec")
+    module_names = {symbol.get_name() for symbol in table.get_symbols()}
+    builtins = set(dir(__builtins__)) if not isinstance(__builtins__, dict) else set(__builtins__)
+
+    missing: set[str] = set()
+
+    def walk(scope) -> None:
+        for symbol in scope.get_symbols():
+            name = symbol.get_name()
+            if symbol.is_global() and name not in module_names and name not in builtins:
+                missing.add(name)
+        for child in scope.get_children():
+            walk(child)
+
+    walk(table)
+    assert not missing, f"used but never imported: {sorted(missing)}"
