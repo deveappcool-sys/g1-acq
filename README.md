@@ -42,7 +42,7 @@ Clash / mihomo 是**规则分流器**：它决定一条连接走哪个出口，�
 ### ① 装（一行）
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/xulu1998/g1-acq/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/deveappcool-sys/g1-acq/main/install.sh | bash
 ```
 
 它会自动找 Python 3.12+、建虚拟环境、注册开机自启，最后**打印一个二维码**。
@@ -50,7 +50,7 @@ curl -fsSL https://raw.githubusercontent.com/xulu1998/g1-acq/main/install.sh | b
 想在仓库里跑也行：
 
 ```bash
-git clone https://github.com/xulu1998/g1-acq.git && cd g1-acq && ./install.sh
+git clone https://github.com/deveappcool-sys/g1-acq.git && cd g1-acq && ./install.sh
 ```
 
 ### ② 配（手机扫那个码）
