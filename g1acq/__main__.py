@@ -135,6 +135,13 @@ def _parser() -> argparse.ArgumentParser:
     cat.add_argument("--md", default="", help="also write a markdown file to this path")
     cat.set_defaults(handler=_catalog)
 
+    off = sub.add_parser("offers", help="read a scraped offer catalogue (g1-acq-plus format)")
+    off.add_argument("--file", default="", help="path to sku-catalog.json (default: local cache)")
+    off.add_argument("--fetch", action="store_true", help="download the catalogue first")
+    off.add_argument("--url", default="", help="override the download URL")
+    off.add_argument("--limit", type=int, default=0)
+    off.set_defaults(handler=_offers)
+
     disc = sub.add_parser("discovery", help="summarise what the App Store answered")
     disc.add_argument("--log", default="~/.g1-acq/discovery.jsonl")
     disc.set_defaults(handler=_discovery)
@@ -199,6 +206,26 @@ def _doctor(args: argparse.Namespace) -> int:
     )
     print(doctor.render(checks, state_path=args.state))
     return 0 if not any(c.status == doctor.BAD for c in checks) else 1
+
+
+def _offers(args: argparse.Namespace) -> int:
+    from . import offers as offers_mod
+
+    cache = args.file or None
+    if args.fetch:
+        url = args.url or offers_mod.DEFAULT_SOURCE
+        print(f"下载中: {url}")
+        data = offers_mod.fetch(url)
+        saved = offers_mod.save(data, cache)
+        print(f"已保存（已剔除 token 等账号字段）: {saved}")
+        cache = str(saved)
+    try:
+        items, source = offers_mod.load(cache)
+    except FileNotFoundError:
+        print(f"找不到目录文件（{cache or offers_mod.CACHE_PATH}）。先加 --fetch 下载一次。")
+        return 1
+    print(offers_mod.render_text(items, source=source, limit=args.limit))
+    return 0
 
 
 def _catalog(args: argparse.Namespace) -> int:

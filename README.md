@@ -105,6 +105,11 @@ G1 ACQ 自检报告
 
 英文输出：命令加 `--lang en`，或设 `G1_LANG=en`；控制台在地址后加 `?lang=en`。
 
+**看商品目录里存在哪些 offer（含免费试用）**：`./.venv/bin/python -m g1acq offers --fetch`
+—— 拉取 [tgai521/g1-acq-plus](https://github.com/tgai521/g1-acq-plus) 的 `sku-catalog.json`，
+剔除其中的账号 token 后缓存在 `~/.g1-acq/offers.json`。这是**别人抓取的商品目录**，
+不代表你的账号能买到；`catalog` 才是本机实测。
+
 **看当前账号/地区被下发了哪些档位与折扣**：`./.venv/bin/python -m g1acq catalog`（加 `--md docs/sku-atlas.md` 可导出成表格）。这是采集到的实测清单，不是全球目录。
 日志里的 `status=… addedCount=…` 这类键值对**不随语言变化**，方便跨版本对照和 grep。
 
